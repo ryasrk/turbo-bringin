@@ -3,6 +3,9 @@
 from dataclasses import dataclass, field
 from pathlib import Path
 from enum import Enum
+import os
+
+_DEFAULT_PORT = int(os.environ.get("INFERENCE_PORT", "18080"))
 
 
 class InferenceMode(str, Enum):
@@ -25,7 +28,7 @@ class StandardConfig:
     cache_type_k: str = "f16"
     cache_type_v: str = "f16"
     flash_attn: str = "off"
-    port: int = 8080
+    port: int = _DEFAULT_PORT
     description: str = "Standard mode: f16 KV cache, full precision"
 
 
@@ -35,7 +38,7 @@ class TurboQuantConfig:
     cache_type_k: str = "q4_0"
     cache_type_v: str = "q4_0"
     flash_attn: str = "on"
-    port: int = 8081
+    port: int = _DEFAULT_PORT
     description: str = "TurboQuant mode: q4_0 KV + FA, 72% VRAM savings"
 
 

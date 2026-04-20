@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tenrary-X — Benchmark Results</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js" integrity="sha384-ixadmbKaBR4GOz1N5e8htGtNRmS1uEGGSnnatMjjYJ0Zx8b5FQSE15AT2cMbmb/" crossorigin="anonymous"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg-primary: #0d1117;
+      --bg-secondary: #161b22;
+      --bg-tertiary: #21262d;
+      --border: #30363d;
+      --text-primary: #e6edf3;
+      --text-secondary: #8b949e;
+      --text-muted: #7d8590;
+      --accent: #58a6ff;
+      --accent-hover: #79c0ff;
+      --success: #3fb950;
+      --warning: #d29922;
+      --danger: #f85149;
+      --font-mono: 'Menlo', 'Monaco', 'Consolas', monospace;
+      --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      --radius: 12px;
+      --radius-sm: 8px;
+    }
+
+    html, body {
+      min-height: 100vh;
+      font-family: var(--font-sans);
+      background: var(--bg-primary);
+      color: var(--text-primary);
+    }
+
+    .page-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(22, 27, 34, 0.85);
+      backdrop-filter: blur(12px);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .page-header h1 {
+      font-size: 20px;
+      font-weight: 700;
+      background: linear-gradient(135deg, var(--accent), #a371f7);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .page-header a {
+      color: var(--accent);
+      text-decoration: none;
+      font-size: 14px;
+    }
+    .page-header a:hover { text-decoration: underline; }
+
+    .subtitle {
+      color: var(--text-secondary);
+      font-size: 13px;
+      margin-left: 12px;
+      font-weight: 400;
+      -webkit-text-fill-color: var(--text-secondary);
+    }
+
+    .dashboard {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(480px, 1fr));
+      gap: 20px;
+      padding: 24px;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    .chart-card {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+    }
+
+    .chart-card h2 {
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      color: var(--text-secondary);
+    }
+
+    .chart-wrapper {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 16 / 10;
+    }
+
+    .summary-cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 12px;
+      padding: 24px 24px 0;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    .summary-card {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 16px;
+      text-align: center;
+    }
+
+    .summary-card .value {
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--accent);
+      font-family: var(--font-mono);
+    }
+
+    .summary-card .label {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .highlight { color: var(--success); }
+    .warn { color: var(--warning); }
+    .bad { color: var(--danger); }
+
+    @media (max-width: 600px) {
+      .dashboard { grid-template-columns: 1fr; padding: 12px; }
+      .summary-cards { padding: 12px 12px 0; }
+      .chart-wrapper { aspect-ratio: 4 / 3; }
+    }
+  </style>
+</head>
+<body>
+  <header class="page-header">
+    <div style="display:flex;align-items:baseline;">
+      <h1>Tenrary-X Benchmarks</h1>
+      <span class="subtitle">Bonsai-8B Q1_0 • RTX 4060 Laptop</span>
+    </div>
+    <a href="/">← Back to Chat</a>
+  </header>
+
+  <div class="summary-cards">
+    <div class="summary-card">
+      <div class="value highlight">72%</div>
+      <div class="label">KV VRAM Savings (q4_0)</div>
+    </div>
+    <div class="summary-card">
+      <div class="value">84.9</div>
+      <div class="label">Gen Speed (t/s, q4_0+FA)</div>
+    </div>
+    <div class="summary-card">
+      <div class="value highlight">3.5×</div>
+      <div class="label">Max Context Improvement</div>
+    </div>
+    <div class="summary-card">
+      <div class="value warn">-8%</div>
+      <div class="label">Speed Impact vs Baseline</div>
+    </div>
+  </div>
+
+  <div class="dashboard">
+    <div class="chart-card">
+      <h2>Generation Speed Comparison (tokens/sec)</h2>
+      <div class="chart-wrapper"><canvas id="speed-chart"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <h2>KV Cache VRAM Usage (MB)</h2>
+      <div class="chart-wrapper"><canvas id="vram-chart"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <h2>Speed Impact by Config (%)</h2>
+      <div class="chart-wrapper"><canvas id="quality-chart"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <h2>KV Cache Scaling by Context Length</h2>
+      <div class="chart-wrapper"><canvas id="kv-scaling-chart"></canvas></div>
+    </div>
+  </div>
+
+  <script>
+    // ── Benchmark Data (from REPORT.md) ──────────────────────────
+    const CONTEXTS = ['2K', '4K', '8K', '16K'];
+    const CONTEXTS_NUM = [2048, 4096, 8192, 16384];
+
+    const data = {
+      baseline: {
+        label: 'Baseline (f16)',
+        kv_mb: [288, 576, 1152, 2304],
+        prompt_ts: [641.0, 787.6, 770.9, 801.1],
+        gen_ts: [91.3, 93.3, 92.7, 92.0],
+      },
+      q8_0: {
+        label: 'q8_0 (no FA)',
+        kv_mb: [153, 306, 612, 1224],
+        prompt_ts: [567.3, 708.5, 687.8, 574.9],
+        gen_ts: [85.7, 86.4, 86.7, 83.5],
+      },
+      q8_0_fa: {
+        label: 'q8_0 + FA',
+        kv_mb: [153, 306, 612, 1224],
+        prompt_ts: [643.7, null, 626.9, null],
+        gen_ts: [87.3, null, 87.5, null],
+      },
+      mixed: {
+        label: 'q8_0/q4_0 + FA ⚠️',
+        kv_mb: [117, 234, 468, 936],
+        prompt_ts: [446.4, 522.7, 420.7, 504.2],
+        gen_ts: [35.8, 36.6, 33.3, 39.5],
+      },
+      q4_0: {
+        label: 'q4_0 + FA ⭐',
+        kv_mb: [81, 162, 324, 648],
+        prompt_ts: [556.6, 721.4, 722.3, 701.7],
+        gen_ts: [82.7, 85.0, 85.8, 86.1],
+      },
+    };
+
+    // Chart.js global defaults for dark theme
+    Chart.defaults.color = '#8b949e';
+    Chart.defaults.borderColor = '#30363d';
+    Chart.defaults.font.family = "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+
+    const COLORS = {
+      baseline: '#8b949e',
+      q8_0: '#58a6ff',
+      q8_0_fa: '#79c0ff',
+      mixed: '#f85149',
+      q4_0: '#3fb950',
+    };
+
+    // ── 1. Speed Comparison Bar Chart ────────────────────────────
+    new Chart(document.getElementById('speed-chart'), {
+      type: 'bar',
+      data: {
+        labels: CONTEXTS,
+        datasets: [
+          {
+            label: data.baseline.label,
+            data: data.baseline.gen_ts,
+            backgroundColor: COLORS.baseline + '99',
+            borderColor: COLORS.baseline,
+            borderWidth: 1,
+          },
+          {
+            label: data.q8_0.label,
+            data: data.q8_0.gen_ts,
+            backgroundColor: COLORS.q8_0 + '99',
+            borderColor: COLORS.q8_0,
+            borderWidth: 1,
+          },
+          {
+            label: data.mixed.label,
+            data: data.mixed.gen_ts,
+            backgroundColor: COLORS.mixed + '99',
+            borderColor: COLORS.mixed,
+            borderWidth: 1,
+          },
+          {
+            label: data.q4_0.label,
+            data: data.q4_0.gen_ts,
+            backgroundColor: COLORS.q4_0 + '99',
+            borderColor: COLORS.q4_0,
+            borderWidth: 1,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'top', labels: { boxWidth: 12, padding: 16 } },
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            title: { display: true, text: 'tokens/sec' },
+            grid: { color: '#21262d' },
+          },
+          x: { grid: { display: false } },
+        },
+      },
+    });
+
+    // ── 2. VRAM Usage Bar Chart ──────────────────────────────────
+    new Chart(document.getElementById('vram-chart'), {
+      type: 'bar',
+      data: {
+        labels: CONTEXTS,
+        datasets: [
+          {
+            label: data.baseline.label,
+            data: data.baseline.kv_mb,
+            backgroundColor: COLORS.baseline + '99',
+            borderColor: COLORS.baseline,
+            borderWidth: 1,
+          },
+          {
+            label: data.q8_0.label,
+            data: data.q8_0.kv_mb,
+            backgroundColor: COLORS.q8_0 + '99',
+            borderColor: COLORS.q8_0,
+            borderWidth: 1,
+          },
+          {
+            label: data.mixed.label,
+            data: data.mixed.kv_mb,
+            backgroundColor: COLORS.mixed + '99',
+            borderColor: COLORS.mixed,
+            borderWidth: 1,
+          },
+          {
+            label: data.q4_0.label,
+            data: data.q4_0.kv_mb,
+            backgroundColor: COLORS.q4_0 + '99',
+            borderColor: COLORS.q4_0,
+            borderWidth: 1,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'top', labels: { boxWidth: 12, padding: 16 } },
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            title: { display: true, text: 'KV Cache (MB)' },
+            grid: { color: '#21262d' },
+          },
+          x: { grid: { display: false } },
+        },
+      },
+    });
+
+    // ── 3. Speed Impact Radar Chart ──────────────────────────────
+    const baselineAvg = data.baseline.gen_ts.reduce((a, b) => a + b, 0) / data.baseline.gen_ts.length;
+    const configs = ['q8_0', 'q8_0_fa', 'mixed', 'q4_0'];
+
+    function avgSpeed(arr) {
+      const valid = arr.filter((v) => v !== null);
+      return valid.length ? valid.reduce((a, b) => a + b, 0) / valid.length : 0;
+    }
+
+    const speedPcts = configs.map((k) => {
+      const avg = avgSpeed(data[k].gen_ts);
+      return ((avg / baselineAvg) * 100).toFixed(1);
+    });
+
+    const kvSavings = configs.map((k) => {
+      const baseKv = data.baseline.kv_mb[0];
+      const thisKv = data[k].kv_mb[0];
+      return (((baseKv - thisKv) / baseKv) * 100).toFixed(1);
+    });
+
+    new Chart(document.getElementById('quality-chart'), {
+      type: 'radar',
+      data: {
+        labels: ['Speed Retention (%)', 'KV VRAM Savings (%)', 'Prompt Speed (%)', 'Consistency'],
+        datasets: configs.map((k, i) => {
+          const promptAvg = avgSpeed(data[k].prompt_ts);
+          const basePAvg = avgSpeed(data.baseline.prompt_ts);
+          return {
+            label: data[k].label,
+            data: [
+              speedPcts[i],
+              kvSavings[i],
+              ((promptAvg / basePAvg) * 100).toFixed(1),
+              k === 'mixed' ? 40 : 95,
+            ],
+            borderColor: COLORS[k],
+            backgroundColor: COLORS[k] + '22',
+            pointBackgroundColor: COLORS[k],
+            borderWidth: 2,
+          };
+        }),
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'top', labels: { boxWidth: 12, padding: 16 } },
+        },
+        scales: {
+          r: {
+            beginAtZero: true,
+            max: 100,
+            grid: { color: '#21262d' },
+            angleLines: { color: '#21262d' },
+            pointLabels: { font: { size: 11 } },
+            ticks: { display: false },
+          },
+        },
+      },
+    });
+
+    // ── 4. KV Scaling Line Chart ─────────────────────────────────
+    const extendedContexts = [2048, 4096, 8192, 16384, 32768, 65536];
+    const extendedLabels = ['2K', '4K', '8K', '16K', '32K*', '65K*'];
+
+    function scaleKv(baseValues, extrapolate = true) {
+      const result = [...baseValues];
+      if (extrapolate && baseValues.length >= 2) {
+        const ratio = baseValues[baseValues.length - 1] / baseValues[baseValues.length - 2];
+        result.push(Math.round(baseValues[baseValues.length - 1] * ratio));
+        result.push(Math.round(baseValues[baseValues.length - 1] * ratio * ratio));
+      }
+      return result;
+    }
+
+    new Chart(document.getElementById('kv-scaling-chart'), {
+      type: 'line',
+      data: {
+        labels: extendedLabels,
+        datasets: [
+          {
+            label: 'f16 (baseline)',
+            data: scaleKv(data.baseline.kv_mb),
+            borderColor: COLORS.baseline,
+            backgroundColor: COLORS.baseline + '22',
+            tension: 0.3,
+            fill: true,
+          },
+          {
+            label: 'q8_0',
+            data: scaleKv(data.q8_0.kv_mb),
+            borderColor: COLORS.q8_0,
+            backgroundColor: COLORS.q8_0 + '22',
+            tension: 0.3,
+            fill: true,
+          },
+          {
+            label: 'q4_0 + FA',
+            data: scaleKv(data.q4_0.kv_mb),
+            borderColor: COLORS.q4_0,
+            backgroundColor: COLORS.q4_0 + '22',
+            tension: 0.3,
+            fill: true,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'top', labels: { boxWidth: 12, padding: 16 } },
+          annotation: {},
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            title: { display: true, text: 'KV Cache VRAM (MB)' },
+            grid: { color: '#21262d' },
+          },
+          x: {
+            title: { display: true, text: 'Context Length' },
+            grid: { display: false },
+          },
+        },
+      },
+    });
+  </script>
+</body>
+</html>

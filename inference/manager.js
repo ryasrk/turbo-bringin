@@ -1,10 +1,10 @@
 /**
  * Tenrary-X Inference Manager
  * Single model resource — switches between standard/turboquant modes by restarting llama-server.
- * Exposes a control API on :3002 and proxies inference to the active llama-server on :8080.
+ * Exposes a control API on :3002 and proxies inference to the active llama-server on :18080.
  */
 
-import { spawn } from 'child_process';
+import { spawn, execFile } from 'child_process';
 import { createServer, request as httpRequest } from 'http';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -17,8 +17,8 @@ const PROJECT_DIR = path.resolve(__dirname, '..');
 const ENGINE = path.join(PROJECT_DIR, 'engines/llama-cpp-prismml/build/bin/llama-server');
 const MODEL = path.join(PROJECT_DIR, 'models/Bonsai-8B-Q1_0.gguf');
 
-const CONTROL_PORT = 3002;
-const INFERENCE_PORT = 8080;
+const CONTROL_PORT = parseInt(process.env.CONTROL_PORT, 10) || 3002;
+const INFERENCE_PORT = parseInt(process.env.INFERENCE_PORT, 10) || 18080;
 const MAX_WS_CONNECTIONS = 32;
 const MAX_WS_PER_IP = 4;
 const MAX_STREAM_BUFFER_SIZE = 64 * 1024;
@@ -27,6 +27,11 @@ const UPSTREAM_REQUEST_TIMEOUT_MS = 45_000;
 
 const DASHBOARD_ORIGIN = process.env.DASHBOARD_ORIGIN || 'http://localhost:3000';
 const CONTROL_API_KEY = process.env.CONTROL_API_KEY || '';
+
+// ── Request Queue ──────────────────────────────────────────────
+const requestQueue = [];
+let isProcessing = false;
+const MAX_QUEUE_SIZE = 10;
 
 const MODES = {
   standard: {
@@ -44,6 +49,33 @@ let serverProcess = null;
 let isStarting = false;
 let activeWebSocketConnections = 0;
 const wsConnectionsByIp = new Map();
+
+const startedAt = Date.now();
+let totalRequests = 0;
+
+// ── GPU Metrics Cache ──────────────────────────────────────────
+let gpuMetricsCache = { utilization: 0, memory_used_mb: 0, memory_total_mb: 0, temperature: 0 };
+
+function pollGpuMetrics() {
+  execFile('nvidia-smi', [
+    '--query-gpu=utilization.gpu,memory.used,memory.total,temperature.gpu',
+    '--format=csv,noheader,nounits',
+  ], { timeout: 5000 }, (err, stdout) => {
+    if (err) return;
+    const parts = stdout.trim().split(',').map((s) => parseFloat(s.trim()));
+    if (parts.length >= 4 && parts.every((n) => !Number.isNaN(n))) {
+      gpuMetricsCache = {
+        utilization: Math.round(parts[0]),
+        memory_used_mb: Math.round(parts[1]),
+        memory_total_mb: Math.round(parts[2]),
+        temperature: Math.round(parts[3]),
+      };
+    }
+  });
+}
+
+pollGpuMetrics();
+setInterval(pollGpuMetrics, 5000);
 
 const websocketServer = new WebSocketServer({ noServer: true, maxPayload: 256 * 1024 });
 
@@ -112,6 +144,165 @@ function attachWebSocketBridge(server) {
   });
 }
 
+// ── Shared stream-to-upstream logic ─────────────────────────────
+function streamUpstreamToSink(params, sink) {
+  const body = buildChatCompletionPayload(params);
+  let upstreamRequest = null;
+  let upstreamResponse = null;
+  let streamBuffer = '';
+  let completed = false;
+
+  const cleanupUpstream = () => {
+    streamBuffer = '';
+    if (upstreamResponse) { upstreamResponse.destroy(); upstreamResponse = null; }
+    if (upstreamRequest) { upstreamRequest.destroy(); upstreamRequest = null; }
+  };
+
+  const finishStream = () => {
+    if (completed) return;
+    completed = true;
+    sink.onDone();
+    cleanupUpstream();
+  };
+
+  upstreamRequest = requestInference('/v1/chat/completions', { method: 'POST', body });
+  upstreamRequest.setTimeout(UPSTREAM_REQUEST_TIMEOUT_MS, () => {
+    sink.onError('Inference request timed out.');
+    cleanupUpstream();
+  });
+
+  upstreamRequest.on('response', (res) => {
+    upstreamResponse = res;
+    res.setEncoding('utf8');
+
+    if ((res.statusCode ?? 500) >= 400) {
+      let errorBody = '';
+      res.on('data', (chunk) => { errorBody += chunk; });
+      res.on('end', () => {
+        sink.onError(errorBody || `Upstream inference request failed with status ${res.statusCode}.`);
+        cleanupUpstream();
+      });
+      return;
+    }
+
+    res.on('data', (chunk) => {
+      if (streamBuffer.length + chunk.length > MAX_STREAM_BUFFER_SIZE) {
+        sink.onError('Inference stream exceeded the buffer limit.');
+        cleanupUpstream();
+        return;
+      }
+
+      const { lines, buffer } = splitSseLines(streamBuffer, chunk);
+      streamBuffer = buffer;
+
+      for (const line of lines) {
+        const event = parseSseLine(line);
+        if (!event || event.type === 'meta') continue;
+        if (event.type === 'delta') { sink.onDelta(event.delta); continue; }
+        if (event.type === 'done') { finishStream(); return; }
+        if (event.type === 'invalid') {
+          sink.onError('Received malformed stream data from inference server.');
+          cleanupUpstream();
+          return;
+        }
+      }
+    });
+
+    res.on('end', () => {
+      if (streamBuffer.trim()) {
+        const trailingEvent = parseSseLine(streamBuffer.trim());
+        if (trailingEvent?.type === 'delta') sink.onDelta(trailingEvent.delta);
+        if (trailingEvent?.type === 'done') { finishStream(); return; }
+      }
+      if (!completed) finishStream();
+    });
+
+    res.on('error', () => {
+      sink.onError('Inference stream closed unexpectedly.');
+      cleanupUpstream();
+    });
+  });
+
+  upstreamRequest.on('error', (error) => {
+    sink.onError(error.message || 'Failed to reach inference server.');
+    cleanupUpstream();
+  });
+
+  upstreamRequest.write(body);
+  upstreamRequest.end();
+
+  return { cleanup: cleanupUpstream };
+}
+
+// ── Request Queue Processing ───────────────────────────────────
+function processQueue() {
+  if (isProcessing || requestQueue.length === 0) return;
+
+  const entry = requestQueue.shift();
+
+  // Update queue positions for remaining clients
+  for (let i = 0; i < requestQueue.length; i++) {
+    const queued = requestQueue[i];
+    if (queued.type === 'ws' && queued.ws.readyState === 1) {
+      wsSend(queued.ws, { type: 'queued', position: i + 1 });
+    } else if (queued.type === 'sse' && !queued.disconnected) {
+      queued.res.write(`data: ${JSON.stringify({ type: 'queued', position: i + 1 })}\n\n`);
+    }
+  }
+
+  // Skip if client disconnected while queued
+  if (entry.type === 'ws' && entry.ws.readyState !== 1) {
+    processQueue();
+    return;
+  }
+  if (entry.type === 'sse' && entry.disconnected) {
+    processQueue();
+    return;
+  }
+
+  isProcessing = true;
+
+  const onComplete = () => {
+    isProcessing = false;
+    processQueue();
+  };
+
+  if (entry.type === 'ws') {
+    const handle = streamUpstreamToSink(entry.params, {
+      onDelta: (delta) => wsSend(entry.ws, { type: 'delta', delta }),
+      onDone: () => { wsSend(entry.ws, { type: 'done' }); entry.cleanupRef = null; onComplete(); },
+      onError: (msg) => { wsSend(entry.ws, { type: 'error', message: msg }); entry.cleanupRef = null; onComplete(); },
+    });
+    entry.cleanupRef = handle.cleanup;
+  } else if (entry.type === 'sse') {
+    const handle = streamUpstreamToSink(entry.params, {
+      onDelta: (delta) => {
+        if (!entry.disconnected) entry.res.write(`data: ${JSON.stringify({ type: 'delta', delta })}\n\n`);
+      },
+      onDone: () => {
+        if (!entry.disconnected) { entry.res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`); entry.res.end(); }
+        entry.cleanupRef = null;
+        onComplete();
+      },
+      onError: (msg) => {
+        if (!entry.disconnected) { entry.res.write(`data: ${JSON.stringify({ type: 'error', message: msg })}\n\n`); entry.res.end(); }
+        entry.cleanupRef = null;
+        onComplete();
+      },
+    });
+    entry.cleanupRef = handle.cleanup;
+  }
+}
+
+function enqueueRequest(entry) {
+  if (requestQueue.length >= MAX_QUEUE_SIZE) {
+    return false;
+  }
+  requestQueue.push(entry);
+  processQueue();
+  return true;
+}
+
 websocketServer.on('connection', (ws) => {
   if (activeWebSocketConnections >= MAX_WS_CONNECTIONS) {
     ws.close(1008, 'Connection limit exceeded.');
@@ -122,39 +313,13 @@ websocketServer.on('connection', (ws) => {
   activeWebSocketConnections += 1;
   wsConnectionsByIp.set(clientIp, (wsConnectionsByIp.get(clientIp) || 0) + 1);
 
-  let upstreamRequest = null;
-  let upstreamResponse = null;
-  let streamBuffer = '';
-  let completed = false;
   let lastRequestAt = 0;
-
-  const cleanupUpstream = () => {
-    streamBuffer = '';
-    if (upstreamResponse) {
-      upstreamResponse.destroy();
-      upstreamResponse = null;
-    }
-    if (upstreamRequest) {
-      upstreamRequest.destroy();
-      upstreamRequest = null;
-    }
-  };
-
-  const finishStream = () => {
-    if (completed) return;
-    completed = true;
-    wsSend(ws, { type: 'done' });
-    cleanupUpstream();
-  };
+  let activeEntry = null;
 
   ws.on('message', (raw, isBinary) => {
     const now = Date.now();
     if (isBinary) {
       wsSend(ws, { type: 'error', message: 'Binary websocket messages are not supported.' });
-      return;
-    }
-    if (upstreamRequest) {
-      wsSend(ws, { type: 'error', message: 'A chat stream is already active for this connection.' });
       return;
     }
     if (!serverProcess || !currentMode || isStarting) {
@@ -180,95 +345,20 @@ websocketServer.on('connection', (ws) => {
     }
 
     lastRequestAt = now;
-    completed = false;
-    const body = buildChatCompletionPayload(params);
-    upstreamRequest = requestInference('/v1/chat/completions', { method: 'POST', body });
-    upstreamRequest.setTimeout(UPSTREAM_REQUEST_TIMEOUT_MS, () => {
-      wsSend(ws, { type: 'error', message: 'Inference request timed out.' });
-      cleanupUpstream();
-    });
+    totalRequests += 1;
 
-    upstreamRequest.on('response', (res) => {
-      upstreamResponse = res;
-      res.setEncoding('utf8');
+    const entry = { type: 'ws', ws, params, cleanupRef: null };
+    activeEntry = entry;
 
-      if ((res.statusCode ?? 500) >= 400) {
-        let errorBody = '';
-        res.on('data', (chunk) => {
-          errorBody += chunk;
-        });
-        res.on('end', () => {
-          wsSend(ws, {
-            type: 'error',
-            message: errorBody || `Upstream inference request failed with status ${res.statusCode}.`,
-          });
-          cleanupUpstream();
-        });
-        return;
-      }
+    if (!enqueueRequest(entry)) {
+      wsSend(ws, { type: 'error', message: 'Queue full, try later' });
+      return;
+    }
 
-      res.on('data', (chunk) => {
-        if (streamBuffer.length + chunk.length > MAX_STREAM_BUFFER_SIZE) {
-          wsSend(ws, { type: 'error', message: 'Inference stream exceeded the buffer limit.' });
-          cleanupUpstream();
-          return;
-        }
-
-        const { lines, buffer } = splitSseLines(streamBuffer, chunk);
-        streamBuffer = buffer;
-
-        for (const line of lines) {
-          const event = parseSseLine(line);
-          if (!event || event.type === 'meta') continue;
-
-          if (event.type === 'delta') {
-            wsSend(ws, { type: 'delta', delta: event.delta });
-            continue;
-          }
-
-          if (event.type === 'done') {
-            finishStream();
-            return;
-          }
-
-          if (event.type === 'invalid') {
-            wsSend(ws, { type: 'error', message: 'Received malformed stream data from inference server.' });
-            cleanupUpstream();
-            return;
-          }
-        }
-      });
-
-      res.on('end', () => {
-        if (streamBuffer.trim()) {
-          const trailingEvent = parseSseLine(streamBuffer.trim());
-          if (trailingEvent?.type === 'delta') {
-            wsSend(ws, { type: 'delta', delta: trailingEvent.delta });
-          }
-          if (trailingEvent?.type === 'done') {
-            finishStream();
-            return;
-          }
-        }
-
-        if (!completed) {
-          finishStream();
-        }
-      });
-
-      res.on('error', () => {
-        wsSend(ws, { type: 'error', message: 'Inference stream closed unexpectedly.' });
-        cleanupUpstream();
-      });
-    });
-
-    upstreamRequest.on('error', (error) => {
-      wsSend(ws, { type: 'error', message: error.message || 'Failed to reach inference server.' });
-      cleanupUpstream();
-    });
-
-    upstreamRequest.write(body);
-    upstreamRequest.end();
+    const position = requestQueue.indexOf(entry);
+    if (position >= 0) {
+      wsSend(ws, { type: 'queued', position: position + 1 });
+    }
   });
 
   const closeConnection = () => {
@@ -281,7 +371,15 @@ websocketServer.on('connection', (ws) => {
     } else {
       wsConnectionsByIp.set(clientIp, count - 1);
     }
-    cleanupUpstream();
+    // Remove any pending queued entries for this ws
+    for (let i = requestQueue.length - 1; i >= 0; i--) {
+      if (requestQueue[i].type === 'ws' && requestQueue[i].ws === ws) {
+        requestQueue.splice(i, 1);
+      }
+    }
+    if (activeEntry?.cleanupRef) {
+      activeEntry.cleanupRef();
+    }
   };
 
   ws.on('close', closeConnection);
@@ -472,6 +570,26 @@ const controlServer = createServer(async (req, res) => {
     }
   }
 
+  // GET /metrics
+  if (url.pathname === '/metrics' && req.method === 'GET') {
+    const contextSize = currentMode ? (MODES[currentMode].args[MODES[currentMode].args.indexOf('-c') + 1] || '0') : '0';
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({
+      gpu: gpuMetricsCache,
+      inference: {
+        active_connections: activeWebSocketConnections,
+        queue_depth: requestQueue.length,
+        total_requests: totalRequests,
+        uptime_seconds: Math.floor((Date.now() - startedAt) / 1000),
+      },
+      model: {
+        name: 'Bonsai-8B-Q1_0',
+        mode: currentMode || 'offline',
+        context_size: parseInt(contextSize, 10),
+      },
+    }));
+  }
+
   // POST /stop
   if (url.pathname === '/stop' && req.method === 'POST') {
     if (!isAuthorizedMutation(req)) {
@@ -483,6 +601,69 @@ const controlServer = createServer(async (req, res) => {
     currentMode = null;
     res.writeHead(200, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({ status: 'stopped' }));
+  }
+
+  // POST /manager/chat/sse — SSE fallback for WebSocket
+  if ((url.pathname === '/manager/chat/sse' || url.pathname === '/chat/sse') && req.method === 'POST') {
+    if (!serverProcess || !currentMode || isStarting) {
+      res.writeHead(503, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: 'Inference server is not ready yet.' }));
+    }
+
+    let rawBody = '';
+    req.on('data', (chunk) => {
+      rawBody += chunk;
+      if (rawBody.length > 256 * 1024) {
+        res.writeHead(413, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Payload too large' }));
+        req.destroy();
+      }
+    });
+
+    req.on('end', () => {
+      let params;
+      try {
+        params = JSON.parse(rawBody);
+      } catch {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: 'Invalid JSON payload.' }));
+      }
+
+      if (!Array.isArray(params.messages) || params.messages.length === 0) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: 'The payload must include a non-empty messages array.' }));
+      }
+
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'Access-Control-Allow-Origin': DASHBOARD_ORIGIN,
+      });
+
+      const entry = { type: 'sse', res, params, disconnected: false, cleanupRef: null };
+
+      req.on('close', () => {
+        entry.disconnected = true;
+        // Remove from queue if still pending
+        const idx = requestQueue.indexOf(entry);
+        if (idx !== -1) requestQueue.splice(idx, 1);
+        if (entry.cleanupRef) entry.cleanupRef();
+      });
+
+      if (!enqueueRequest(entry)) {
+        res.write(`data: ${JSON.stringify({ type: 'error', message: 'Queue full, try later' })}\n\n`);
+        res.end();
+        return;
+      }
+
+      const position = requestQueue.indexOf(entry);
+      if (position >= 0) {
+        res.write(`data: ${JSON.stringify({ type: 'queued', position: position + 1 })}\n\n`);
+      }
+    });
+
+    return;
   }
 
   res.writeHead(404, { 'Content-Type': 'application/json' });
@@ -499,6 +680,7 @@ controlServer.listen(CONTROL_PORT, () => {
   log(`Endpoints:`);
   log(`  GET  /status         — Current mode info`);
   log(`  GET  /health         — Inference health check`);
+  log(`  GET  /metrics        — GPU & inference metrics`);
   log(`  POST /switch?mode=X  — Switch mode (standard|turboquant)`);
   log(`  POST /stop           — Stop server`);
   log(`  WS   /ws/chat        — Streaming chat bridge`);

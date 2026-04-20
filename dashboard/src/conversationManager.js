@@ -4,6 +4,30 @@
 
 let _conversations = new Map();
 let _activeId = null;
+let _folders = new Set(['General']);
+
+const FOLDERS_KEY = 'tenrary_folders';
+
+function loadFolders() {
+  try {
+    const raw = localStorage.getItem(FOLDERS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        _folders = new Set(['General', ...parsed.filter(f => typeof f === 'string')]);
+      }
+    }
+  } catch { /* ignore */ }
+}
+
+function saveFolders() {
+  try {
+    localStorage.setItem(FOLDERS_KEY, JSON.stringify([..._folders]));
+  } catch { /* ignore */ }
+}
+
+// Load persisted folders on module init
+loadFolders();
 
 // ── Helpers ────────────────────────────────────────────────────
 
@@ -16,6 +40,7 @@ function now() {
 }
 
 function escapeHtml(str) {
+  if (typeof str !== 'string') return String(str || '');
   return str
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -40,11 +65,61 @@ export function createConversation(title = 'New Chat', mode = 'turboquant') {
     updatedAt: ts,
     mode,
     messageCount: 0,
+    folder: '',
   };
 
   _conversations.set(conversation.id, conversation);
   dispatch('conversation:create', { id: conversation.id, conversation });
   return conversation;
+}
+
+export function setFolder(id, folder) {
+  const conv = _conversations.get(id);
+  if (!conv) return null;
+
+  const updated = { ...conv, folder: folder || '', updatedAt: now() };
+  _conversations.set(id, updated);
+  dispatch('conversation:folder', { id, folder });
+  return updated;
+}
+
+export function createFolder(name) {
+  if (!name || !name.trim()) return false;
+  if (_folders.has(name)) return false;
+  _folders.add(name.trim());
+  saveFolders();
+  dispatch('folder:create', { name: name.trim() });
+  return true;
+}
+
+export function deleteFolder(name) {
+  if (name === 'General') return false;
+  if (!_folders.has(name)) return false;
+  _folders.delete(name);
+  saveFolders();
+  // Move conversations from deleted folder to General
+  for (const conv of _conversations.values()) {
+    if (conv.folder === name) {
+      setFolder(conv.id, '');
+    }
+  }
+  dispatch('folder:delete', { name });
+  return true;
+}
+
+export function getFolders() {
+  return [..._folders];
+}
+
+export function syncFoldersFromConversations(conversations) {
+  let changed = false;
+  for (const conv of conversations) {
+    if (conv.folder && !_folders.has(conv.folder)) {
+      _folders.add(conv.folder);
+      changed = true;
+    }
+  }
+  if (changed) saveFolders();
 }
 
 export function renameConversation(id, newTitle) {
@@ -103,8 +178,10 @@ export function searchConversations(query, conversations) {
   const q = query.toLowerCase().trim();
 
   return conversations.filter((conv) => {
-    if (conv.title.toLowerCase().includes(q)) return true;
+    const title = typeof conv.title === 'string' ? conv.title : String(conv.title || '');
+    if (title.toLowerCase().includes(q)) return true;
 
+    if (!Array.isArray(conv.messages)) return false;
     return conv.messages.some(
       (msg) => typeof msg.content === 'string' && msg.content.toLowerCase().includes(q),
     );
@@ -113,7 +190,7 @@ export function searchConversations(query, conversations) {
 
 // ── Title Generation ───────────────────────────────────────────
 
-export function generateTitle(firstMessage) {
+function extractFallbackTitle(firstMessage) {
   if (!firstMessage || typeof firstMessage !== 'string') return 'New Chat';
 
   const cleaned = firstMessage
@@ -128,6 +205,72 @@ export function generateTitle(firstMessage) {
   const truncated = cleaned.slice(0, 40);
   const lastSpace = truncated.lastIndexOf(' ');
   return (lastSpace > 20 ? truncated.slice(0, lastSpace) : truncated) + '…';
+}
+
+function sanitizeGeneratedTitle(title) {
+  if (typeof title !== 'string') return '';
+
+  return title
+    .replace(/[\n\r"']/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export function generateTitleFallback(firstMessage) {
+  return extractFallbackTitle(firstMessage);
+}
+
+export async function generateTitle(firstMessage, options = {}) {
+  const fallback = extractFallbackTitle(firstMessage);
+  options.onFallback?.(fallback);
+
+  if (!firstMessage || firstMessage.trim().length < 10) return fallback;
+
+  const endpoint = typeof options.apiEndpoint === 'string' && options.apiEndpoint.trim()
+    ? options.apiEndpoint.trim()
+    : '/v1/chat/completions';
+
+  try {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messages: [
+          {
+            role: 'system',
+            content: 'Generate a concise 3-6 word title for this conversation. Return only the title, nothing else.',
+          },
+          {
+            role: 'user',
+            content: firstMessage.slice(0, 500),
+          },
+        ],
+        max_tokens: 20,
+        temperature: 0.2,
+        stream: false,
+      }),
+      signal: options.signal,
+    });
+
+    if (!response.ok) {
+      return fallback;
+    }
+
+    const data = await response.json();
+    const rawTitle = data?.choices?.[0]?.message?.content ?? '';
+    const cleaned = sanitizeGeneratedTitle(rawTitle);
+
+    if (cleaned.length >= 3 && cleaned.length <= 60) return cleaned;
+    return fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+export async function generateTitleViaLLM(firstMessage, options = {}) {
+  return generateTitle(firstMessage, options);
 }
 
 // ── Sorting ────────────────────────────────────────────────────
@@ -150,16 +293,87 @@ export function renderConversationItem(conversation, isActive) {
 </div>`;
 }
 
+export function renderFolderHeader(name, chatCount) {
+  const escaped = escapeHtml(name);
+  const isGeneral = name === 'General';
+  const deleteBtn = isGeneral ? '' : '<button class="folder-delete" title="Delete project">×</button>';
+  return `<div class="folder-header${isGeneral ? ' folder-header--general' : ''}" data-folder="${escaped}">
+  <span class="folder-toggle">▾</span>
+  <span class="folder-icon">${isGeneral ? '💬' : '📁'}</span>
+  <span class="folder-name">${escaped}</span>
+  <span class="folder-count">${chatCount}</span>
+  ${deleteBtn}
+</div>`;
+}
+
 export function renderConversationList(conversations, activeId) {
   const sorted = sortConversations(conversations);
+  const allFolders = getFolders();
+  const hasCustomFolders = allFolders.some((f) => f !== 'General');
 
-  if (sorted.length === 0) {
-    return '<p style="padding:12px;font-size:13px;color:var(--text-muted);text-align:center;">No conversations yet</p>';
+  if (sorted.length === 0 && !hasCustomFolders) {
+    return '<div class="sidebar-empty"><span class="sidebar-empty-icon">💬</span><p>No conversations yet</p><p class="sidebar-empty-hint">Start a new chat or create a project</p></div>';
   }
 
-  return sorted
-    .map((conv) => renderConversationItem(conv, conv.id === activeId))
-    .join('\n');
+  // Group conversations by folder
+  const folders = new Map();
+  for (const conv of sorted) {
+    const folder = conv.folder || 'General';
+    if (!folders.has(folder)) folders.set(folder, []);
+    folders.get(folder).push(conv);
+  }
+
+  let html = '';
+
+  // Ensure General is always present in tree mode
+  if (!folders.has('General')) {
+    folders.set('General', []);
+  }
+
+  // Render "General" first, then alphabetical folders
+  const folderNames = [...folders.keys()].sort((a, b) => {
+    if (a === 'General') return -1;
+    if (b === 'General') return 1;
+    return a.localeCompare(b);
+  });
+
+  // If only "General" exists and no custom folders, render flat list
+  if (folderNames.length <= 1 && !hasCustomFolders) {
+    if (sorted.length === 0) {
+      return '<div class="sidebar-empty"><span class="sidebar-empty-icon">💬</span><p>No conversations yet</p><p class="sidebar-empty-hint">Start a new chat or create a project</p></div>';
+    }
+    return sorted
+      .map((conv) => renderConversationItem(conv, conv.id === activeId))
+      .join('\n');
+  }
+
+  for (const name of folderNames) {
+    const items = folders.get(name);
+    html += `<div class="folder-group">`;
+    html += renderFolderHeader(name, items.length);
+    html += `<div class="folder-content" data-folder="${escapeHtml(name)}">`;
+    if (items.length > 0) {
+      html += items
+        .map((conv) => renderConversationItem(conv, conv.id === activeId))
+        .join('\n');
+    } else {
+      html += '<div class="folder-empty">No chats yet</div>';
+    }
+    html += '</div></div>';
+  }
+
+  // Show empty folders that have no conversations
+  for (const name of allFolders) {
+    if (name !== 'General' && !folders.has(name)) {
+      html += `<div class="folder-group">`;
+      html += renderFolderHeader(name, 0);
+      html += `<div class="folder-content" data-folder="${escapeHtml(name)}">`;
+      html += '<div class="folder-empty">No chats yet</div>';
+      html += '</div></div>';
+    }
+  }
+
+  return html;
 }
 
 // ── Time formatting ────────────────────────────────────────────

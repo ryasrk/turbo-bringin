@@ -6,6 +6,9 @@
 #   ./run_all.sh                  # Start both (default: turboquant mode)
 #   ./run_all.sh standard         # Start both with standard mode
 #   ./run_all.sh stop             # Stop everything
+#
+# Environment:
+#   INFERENCE_PORT=18080          # Override inference server port
 
 set -euo pipefail
 
@@ -13,6 +16,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 MODE="${1:-turboquant}"
+INFERENCE_PORT="${INFERENCE_PORT:-18080}"
+export INFERENCE_PORT
 
 # ── Colors ──────────────────────────────────────────────────────
 RED='\033[0;31m'
@@ -82,9 +87,17 @@ fi
 pkill -f "node.*inference/manager\.js" 2>/dev/null || true
 pkill -f "llama-server.*Bonsai" 2>/dev/null || true
 lsof -ti:3000 2>/dev/null | xargs kill 2>/dev/null || true
+lsof -ti:"$INFERENCE_PORT" 2>/dev/null | xargs kill 2>/dev/null || true
 
 # Wait for ports to free
 sleep 1
+
+# Verify inference port is free
+if lsof -ti:"$INFERENCE_PORT" >/dev/null 2>&1 || ss -tlnp | grep -q ":${INFERENCE_PORT} " 2>/dev/null; then
+    echo -e "${RED}Error: Port ${INFERENCE_PORT} is still in use. Cannot start inference server.${NC}"
+    echo "  Check with: ss -tlnp | grep ${INFERENCE_PORT}"
+    exit 1
+fi
 
 # ── Start Inference Manager ────────────────────────────────────
 echo -e "${CYAN}═══ Tenrary-X ═══${NC}"
@@ -96,7 +109,7 @@ MANAGER_PID=$!
 # Wait for manager to be ready (max 30s)
 echo -n "  Waiting for inference server"
 for i in $(seq 1 30); do
-    if python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')" 2>/dev/null; then
+    if python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:${INFERENCE_PORT}/health')" 2>/dev/null; then
         echo -e " ${GREEN}ready!${NC}"
         break
     fi
@@ -123,7 +136,7 @@ echo ""
 echo -e "${GREEN}═══ All services running ═══${NC}"
 echo ""
 echo -e "  Dashboard:  ${CYAN}http://localhost:3000${NC}"
-echo -e "  Inference:  http://localhost:8080"
+echo -e "  Inference:  http://localhost:${INFERENCE_PORT}"
 echo -e "  Manager:    http://localhost:3002"
 echo -e "  Mode:       ${GREEN}${MODE}${NC}"
 echo ""

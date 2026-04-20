@@ -159,3 +159,44 @@ export const CONFIG = Object.freeze({
   MODEL_MAX_CONTEXT,
   DEFAULT_MAX_CONTEXT,
 });
+
+// ── Token Usage Analytics ──────────────────────────────────────
+const ANALYTICS_KEY = 'tenrary-x-token-analytics';
+
+export function recordUsage(promptTokens, completionTokens, mode) {
+  const analytics = JSON.parse(localStorage.getItem(ANALYTICS_KEY) || '[]');
+  analytics.push({
+    timestamp: Date.now(),
+    prompt: promptTokens,
+    completion: completionTokens,
+    total: promptTokens + completionTokens,
+    mode,
+  });
+  // Keep last 1000 records
+  if (analytics.length > 1000) analytics.splice(0, analytics.length - 1000);
+  localStorage.setItem(ANALYTICS_KEY, JSON.stringify(analytics));
+}
+
+export function getAnalytics() {
+  return JSON.parse(localStorage.getItem(ANALYTICS_KEY) || '[]');
+}
+
+export function getAnalyticsSummary() {
+  const data = getAnalytics();
+  const today = new Date(); today.setHours(0,0,0,0);
+  const todayTs = today.getTime();
+  const weekAgo = todayTs - 7 * 24 * 60 * 60 * 1000;
+
+  const todayData = data.filter(d => d.timestamp >= todayTs);
+  const weekData = data.filter(d => d.timestamp >= weekAgo);
+
+  return {
+    today: { total: todayData.reduce((s, d) => s + d.total, 0), count: todayData.length },
+    week: { total: weekData.reduce((s, d) => s + d.total, 0), count: weekData.length },
+    allTime: { total: data.reduce((s, d) => s + d.total, 0), count: data.length },
+    byMode: {
+      standard: data.filter(d => d.mode === 'standard').reduce((s, d) => s + d.total, 0),
+      turboquant: data.filter(d => d.mode === 'turboquant').reduce((s, d) => s + d.total, 0),
+    },
+  };
+}

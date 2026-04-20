@@ -198,6 +198,7 @@ export function createConversation(title = 'New Chat') {
     createdAt: ts,
     updatedAt: ts,
     mode: 'turboquant',
+    folder: '',
     settings: {},
   };
 }
@@ -222,9 +223,10 @@ export async function listConversations() {
   return Object.values(all)
     .map((c) => ({
       id: c.id,
-      title: c.title,
-      updatedAt: c.updatedAt,
+      title: typeof c.title === 'string' ? c.title : String(c.title || 'Untitled'),
+      updatedAt: c.updatedAt || 0,
       messageCount: c.messages ? c.messages.length : 0,
+      folder: c.folder || '',
     }))
     .sort((a, b) => b.updatedAt - a.updatedAt);
 }
@@ -355,4 +357,32 @@ export function importFromJSON(jsonString) {
     mode: typeof data.mode === 'string' ? data.mode : 'turboquant',
     settings: data.settings && typeof data.settings === 'object' ? { ...data.settings } : {},
   };
+}
+
+// ── Share / Import ─────────────────────────────────────────────
+
+export function generateShareData(conversation) {
+  const shareData = {
+    version: 1,
+    title: conversation.title,
+    messages: conversation.messages.map(m => ({
+      role: m.role,
+      content: m.content,
+      timestamp: m.timestamp,
+    })),
+    exportedAt: Date.now(),
+    model: 'Bonsai-8B',
+  };
+  return btoa(unescape(encodeURIComponent(JSON.stringify(shareData))));
+}
+
+export function importShareData(encoded) {
+  try {
+    const json = decodeURIComponent(escape(atob(encoded)));
+    const data = JSON.parse(json);
+    if (!data.version || !Array.isArray(data.messages)) throw new Error('Invalid format');
+    return data;
+  } catch {
+    return null;
+  }
 }

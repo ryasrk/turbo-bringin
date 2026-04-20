@@ -5,7 +5,7 @@
 # Usage:
 #   ./run.sh standard           # f16 KV cache (max quality)
 #   ./run.sh turboquant         # q4_0 KV + FA (72% VRAM savings)
-#   ./run.sh both               # Launch both on ports 8080/8081
+#   ./run.sh both               # Launch both on port $INFERENCE_PORT
 #   ./run.sh stop               # Stop all running servers
 
 set -uo pipefail
@@ -15,6 +15,8 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_DIR"
 
 export PATH="/usr/local/cuda-12.8/bin:$PATH"
+
+INFERENCE_PORT="${INFERENCE_PORT:-18080}"
 
 ENGINE="engines/llama-cpp-prismml/build/bin/llama-server"
 MODEL="models/Bonsai-8B-Q1_0.gguf"
@@ -33,7 +35,7 @@ if [[ ! -f "$MODEL" ]]; then
 fi
 
 start_standard() {
-    local port="${1:-8080}"
+    local port="${1:-$INFERENCE_PORT}"
     local ctx="${2:-8192}"
     shift 2 2>/dev/null || true
     echo "Starting STANDARD mode on port $port (f16 KV, ctx=$ctx)..."
@@ -51,7 +53,7 @@ start_standard() {
 }
 
 start_turboquant() {
-    local port="${1:-8081}"
+    local port="${1:-$INFERENCE_PORT}"
     local ctx="${2:-16384}"
     shift 2 2>/dev/null || true
     echo "Starting TURBOQUANT mode on port $port (q4_0 KV + FA, ctx=$ctx)..."
@@ -94,18 +96,18 @@ case "${1:-help}" in
     both)
         echo "═══ Starting Both Inference Modes ═══"
         echo ""
-        start_standard 8080 8192 &
+        start_standard "$INFERENCE_PORT" 8192 &
         STD_PID=$!
-        echo "Standard server starting (PID: $STD_PID, port: 8080)..."
+        echo "Standard server starting (PID: $STD_PID, port: $INFERENCE_PORT)..."
         sleep 3
-        start_turboquant 8081 16384 &
+        start_turboquant "$((INFERENCE_PORT + 1))" 16384 &
         TQ_PID=$!
-        echo "TurboQuant server starting (PID: $TQ_PID, port: 8081)..."
+        echo "TurboQuant server starting (PID: $TQ_PID, port: $((INFERENCE_PORT + 1)))..."
         sleep 3
         echo ""
         echo "═══ Both servers launched ═══"
-        echo "  Standard  → http://localhost:8080 (f16 KV, 8K ctx)"
-        echo "  TurboQuant→ http://localhost:8081 (q4_0+FA, 16K ctx)"
+        echo "  Standard  → http://localhost:$INFERENCE_PORT (f16 KV, 8K ctx)"
+        echo "  TurboQuant→ http://localhost:$((INFERENCE_PORT + 1)) (q4_0+FA, 16K ctx)"
         echo ""
         echo "Dashboard will auto-switch between them."
         echo "Use './run.sh stop' to kill both."
@@ -141,19 +143,19 @@ case "${1:-help}" in
         echo ""
         echo "Modes:"
         echo "  serve        ⭐ RECOMMENDED: Single-model manager (dashboard switches mode)"
-        echo "  standard     f16 KV cache, no FA (port 8080, ctx 8192)"
-        echo "  turboquant   q4_0 KV + Flash Attention (port 8081, ctx 16384)"
+        echo "  standard     f16 KV cache, no FA (port $INFERENCE_PORT, ctx 8192)"
+        echo "  turboquant   q4_0 KV + Flash Attention (port $INFERENCE_PORT, ctx 16384)"
         echo "  both         Start both servers (uses 2x VRAM)"
         echo "  stop         Kill all running servers"
         echo "  status       Show running servers"
         echo ""
         echo "Examples:"
-        echo "  $0 standard                    # Standard on :8080"
+        echo "  $0 standard                    # Standard on :$INFERENCE_PORT"
         echo "  $0 turboquant 9000 32768       # TurboQuant on :9000 with 32K ctx"
         echo "  $0 both                        # Both modes in parallel"
         echo ""
         echo "API (OpenAI-compatible):"
-        echo "  curl http://localhost:8080/v1/chat/completions \\"
+        echo "  curl http://localhost:$INFERENCE_PORT/v1/chat/completions \\"
         echo "    -H 'Content-Type: application/json' \\"
         echo "    -d '{\"messages\":[{\"role\":\"user\",\"content\":\"Hello\"}]}'"
         ;;

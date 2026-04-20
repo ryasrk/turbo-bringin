@@ -157,8 +157,8 @@ function renderCodeBlocks(text, ctx) {
       // H2 fix: use data-copy attribute instead of inline onclick handler
       return sentinel(
         `<div class="code-block-wrapper">` +
-        `<div class="code-block-header">${langLabel}<button class="copy-btn" data-copy>Copy</button></div>` +
-        `<pre class="code-block">${highlighted}</pre>` +
+        (langLabel ? `<div class="code-block-header">${langLabel}</div>` : '') +
+        `<pre class="code-block">${highlighted}<button class="copy-btn" data-copy>Copy</button></pre>` +
         `</div>`,
         ctx
       );
@@ -182,7 +182,7 @@ function renderPartialCodeBlock(text, ctx) {
   const before = text.slice(0, unclosedMatch.index);
   const block =
     `<div class="code-block-wrapper streaming">` +
-    `<div class="code-block-header">${langLabel}<span class="streaming-indicator">…</span></div>` +
+    (langLabel ? `<div class="code-block-header">${langLabel}<span class="streaming-indicator">…</span></div>` : '') +
     `<pre class="code-block">${highlighted}</pre>` +
     `</div>`;
 

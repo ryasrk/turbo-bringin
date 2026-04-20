@@ -2,15 +2,19 @@
 
 import argparse
 import json
+import os
 import sys
 import time
 import urllib.request
 import urllib.error
 
+_DEFAULT_PORT = os.environ.get("INFERENCE_PORT", "18080")
+_DEFAULT_BASE_URL = f"http://localhost:{_DEFAULT_PORT}"
+
 
 def chat_completion(
     prompt: str,
-    base_url: str = "http://localhost:8080",
+    base_url: str = _DEFAULT_BASE_URL,
     model: str = "bonsai-8b",
     max_tokens: int = 256,
     temperature: float = 0.7,
@@ -41,7 +45,7 @@ def chat_completion(
         return {"error": str(e)}
 
 
-def health_check(base_url: str = "http://localhost:8080") -> dict:
+def health_check(base_url: str = _DEFAULT_BASE_URL) -> dict:
     """Check if the server is healthy."""
     url = f"{base_url}/health"
     try:
@@ -75,7 +79,7 @@ def main():
 
     args = parser.parse_args()
 
-    port_map = {"standard": 8080, "turboquant": 8081}
+    port_map = {"standard": int(_DEFAULT_PORT), "turboquant": int(_DEFAULT_PORT)}
 
     if args.command == "chat":
         port = port_map[args.mode]

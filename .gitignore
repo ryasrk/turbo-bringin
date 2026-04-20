@@ -23,6 +23,7 @@ results/*.json
 results/run_*/
 
 # Env files
+.env
 env_path.txt
 
 # OS
