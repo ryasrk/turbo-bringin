@@ -225,15 +225,14 @@ export class ConnectionManager {
       return false;
     }
 
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 5000);
       const res = await fetch(url, {
         method: 'GET',
         signal: controller.signal,
         cache: 'no-store',
       });
-      clearTimeout(timeout);
 
       if (res.ok) {
         if (this.#state !== 'streaming') {
@@ -246,6 +245,9 @@ export class ConnectionManager {
     } catch {
       this.setState('disconnected');
       return false;
+    } finally {
+      // M5 fix: always clean up the timeout
+      clearTimeout(timeout);
     }
   }
 

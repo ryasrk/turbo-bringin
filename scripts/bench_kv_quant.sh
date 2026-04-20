@@ -8,10 +8,17 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_DIR"
 
-export PATH="/usr/local/cuda-12.8/bin:$PATH"
+CUDA_PATH="${CUDA_HOME:-$(ls -d /usr/local/cuda*/bin 2>/dev/null | sort -V | tail -1)}"
+if [[ -n "$CUDA_PATH" ]]; then
+    export PATH="$CUDA_PATH:$PATH"
+fi
 
 ENGINE="engines/llama-cpp-prismml/build/bin/llama-cli"
-MODEL="models/Bonsai-8B-Q1_0.gguf"
+MODEL="${MODEL_PATH:-$(find models/ -name '*.gguf' -print -quit 2>/dev/null)}"
+if [[ -z "$MODEL" ]]; then
+    echo "ERROR: No .gguf model found in models/" >&2
+    exit 1
+fi
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 RESULTS_DIR="results/kv_quant_${TIMESTAMP}"
 mkdir -p "$RESULTS_DIR"

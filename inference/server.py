@@ -71,7 +71,12 @@ def start_server(mode: InferenceMode, model_cfg: ModelConfig, server_cfg: Server
     def handle_signal(signum, frame):
         print(f"\nShutting down {mode.value} server...")
         process.terminate()
-        process.wait(timeout=10)
+        try:
+            process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            print("Server did not exit in time, force killing...")
+            process.kill()
+            process.wait()
         sys.exit(0)
 
     signal.signal(signal.SIGINT, handle_signal)

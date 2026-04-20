@@ -51,10 +51,11 @@ export function renameConversation(id, newTitle) {
   const conv = _conversations.get(id);
   if (!conv) return null;
 
-  conv.title = newTitle;
-  conv.updatedAt = now();
+  // H5 fix: create new object instead of mutating
+  const updated = { ...conv, title: newTitle, updatedAt: now() };
+  _conversations.set(id, updated);
   dispatch('conversation:rename', { id, title: newTitle });
-  return conv;
+  return updated;
 }
 
 export function deleteConversation(id) {
@@ -82,9 +83,11 @@ export function switchConversation(id) {
   if (!conv) return null;
 
   _activeId = id;
-  conv.updatedAt = now();
-  dispatch('conversation:switch', { id, conversation: conv });
-  return conv;
+  // H5 fix: create new object instead of mutating
+  const updated = { ...conv, updatedAt: now() };
+  _conversations.set(id, updated);
+  dispatch('conversation:switch', { id, conversation: updated });
+  return updated;
 }
 
 export function getActiveConversation() {
@@ -136,20 +139,14 @@ export function sortConversations(conversations) {
 // ── Rendering ──────────────────────────────────────────────────
 
 export function renderConversationItem(conversation, isActive) {
-  const activeClass = isActive ? ' conversation-item--active' : '';
+  const activeClass = isActive ? ' active' : '';
   const title = escapeHtml(conversation.title);
-  const count = conversation.messageCount ?? conversation.messages?.length ?? 0;
   const timeAgo = formatTimeAgo(conversation.updatedAt);
 
-  return `<div class="conversation-item${activeClass}" data-id="${escapeHtml(conversation.id)}" role="button" tabindex="0" aria-current="${isActive ? 'true' : 'false'}">
-  <div class="conversation-item__content">
-    <span class="conversation-item__title">${title}</span>
-    <span class="conversation-item__meta">${count} message${count !== 1 ? 's' : ''} · ${timeAgo}</span>
-  </div>
-  <div class="conversation-item__actions">
-    <button class="conversation-item__rename" data-action="rename" data-id="${escapeHtml(conversation.id)}" aria-label="Rename conversation" title="Rename">✏️</button>
-    <button class="conversation-item__delete" data-action="delete" data-id="${escapeHtml(conversation.id)}" aria-label="Delete conversation" title="Delete">🗑️</button>
-  </div>
+  return `<div class="conv-item${activeClass}" data-conv-id="${escapeHtml(conversation.id)}">
+  <span class="conv-title" title="${title}">${title}</span>
+  <span class="conv-time">${timeAgo}</span>
+  <button class="conv-delete" title="Delete">×</button>
 </div>`;
 }
 
@@ -157,18 +154,12 @@ export function renderConversationList(conversations, activeId) {
   const sorted = sortConversations(conversations);
 
   if (sorted.length === 0) {
-    return `<div class="conversation-list conversation-list--empty">
-  <p class="conversation-list__placeholder">No conversations yet. Start a new chat!</p>
-</div>`;
+    return '<p style="padding:12px;font-size:13px;color:var(--text-muted);text-align:center;">No conversations yet</p>';
   }
 
-  const items = sorted
+  return sorted
     .map((conv) => renderConversationItem(conv, conv.id === activeId))
     .join('\n');
-
-  return `<div class="conversation-list" role="listbox" aria-label="Conversations">
-${items}
-</div>`;
 }
 
 // ── Time formatting ────────────────────────────────────────────

@@ -11,9 +11,9 @@ echo "  Tenrary-X: Setup"
 echo "═══════════════════════════════════════════════════════════"
 
 # ── 1. Python venv (reuse TurboQuant-X cached env) ──────────────────
-CACHED_ENV="/home/ryasr/personal-project/llm-turboquant/turboquant-x/env"
+CACHED_ENV="$(cd "$SCRIPT_DIR/../llm-turboquant/turboquant-x" 2>/dev/null && pwd)/env" || CACHED_ENV=""
 
-if [[ -d "$CACHED_ENV" && ! -d "env" ]]; then
+if [[ -n "$CACHED_ENV" && -d "$CACHED_ENV" && ! -d "env" ]]; then
     echo "[1/5] Linking to cached Python environment..."
     ln -sf "$CACHED_ENV" env
     echo "  → Symlinked env → $CACHED_ENV"
@@ -30,7 +30,7 @@ source env/bin/activate
 # ── 2. Install missing deps (tabulate, llama-cpp-python) ───────────
 echo "[2/5] Installing missing Python dependencies..."
 pip install --upgrade pip 2>/dev/null
-pip install tabulate 2>/dev/null || echo "  tabulate install skipped"
+pip install "tabulate>=0.9,<1.0" 2>/dev/null || echo "  tabulate install skipped"
 
 # ── 3. Build PrismML llama.cpp fork (Q1_0 CUDA kernels) ────────────
 echo "[3/5] Building PrismML llama.cpp (baseline + Q1_0 support)..."

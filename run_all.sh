@@ -7,7 +7,7 @@
 #   ./run_all.sh standard         # Start both with standard mode
 #   ./run_all.sh stop             # Stop everything
 
-set -uo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
@@ -23,9 +23,9 @@ NC='\033[0m'
 
 stop_all() {
     echo -e "${YELLOW}Stopping all services...${NC}"
-    pkill -f "node.*manager.js" 2>/dev/null && echo "  Manager stopped." || true
-    pkill -f "llama-server" 2>/dev/null && echo "  Inference server stopped." || true
-    pkill -f "vite.*tenrary" 2>/dev/null || true
+    pkill -f "node.*inference/manager\.js" 2>/dev/null && echo "  Manager stopped." || true
+    pkill -f "llama-server.*Bonsai" 2>/dev/null && echo "  Inference server stopped." || true
+    pkill -f "vite.*--port 3000" 2>/dev/null || true
     # Kill dashboard by port if vite pattern doesn't match
     lsof -ti:3000 2>/dev/null | xargs kill 2>/dev/null || true
     echo -e "${GREEN}All services stopped.${NC}"
@@ -79,8 +79,8 @@ if [[ ! -d "dashboard/node_modules" ]]; then
 fi
 
 # ── Stop existing services ─────────────────────────────────────
-pkill -f "node.*manager.js" 2>/dev/null || true
-pkill -f "llama-server" 2>/dev/null || true
+pkill -f "node.*inference/manager\.js" 2>/dev/null || true
+pkill -f "llama-server.*Bonsai" 2>/dev/null || true
 lsof -ti:3000 2>/dev/null | xargs kill 2>/dev/null || true
 
 # Wait for ports to free

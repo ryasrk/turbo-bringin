@@ -2,16 +2,23 @@
 # ── Accuracy Benchmark ──────────────────────────────────────────────
 # Tests model accuracy across KV configurations with diverse prompts
 # Evaluates: math, logic, factual, coding, instruction following
-set -uo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_DIR"
 
-export PATH="/usr/local/cuda-12.8/bin:$PATH"
+CUDA_PATH="${CUDA_HOME:-$(ls -d /usr/local/cuda*/bin 2>/dev/null | sort -V | tail -1)}"
+if [[ -n "$CUDA_PATH" ]]; then
+    export PATH="$CUDA_PATH:$PATH"
+fi
 
 ENGINE="engines/llama-cpp-prismml/build/bin/llama-cli"
-MODEL="models/Bonsai-8B-Q1_0.gguf"
+MODEL="${MODEL_PATH:-$(find models/ -name '*.gguf' -print -quit 2>/dev/null)}"
+if [[ -z "$MODEL" ]]; then
+    echo "ERROR: No .gguf model found in models/" >&2
+    exit 1
+fi
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 RESULTS_DIR="results/accuracy_${TIMESTAMP}"
 mkdir -p "$RESULTS_DIR"
@@ -76,27 +83,28 @@ run_prompt() {
     local prompt="$4"
     local outfile="$5"
 
-    local fa_flag=""
+    local cmd=("$ENGINE"
+        -m "$MODEL"
+        -p "$prompt"
+        -n 128
+        -ngl 99
+        -c 2048
+        --temp 0.1
+        --top-p 0.9
+        --top-k 10
+        --cache-type-k "$cache_k"
+        --cache-type-v "$cache_v"
+        --single-turn
+        --no-display-prompt
+        -rea off
+    )
+
     if [[ "$fa" == "on" ]]; then
-        fa_flag="-fa on"
+        cmd+=(-fa on)
     fi
 
     # Use script to capture tty output (llama-cli conversation mode writes to tty directly)
-    script -q -c "$ENGINE \
-        -m $MODEL \
-        -p \"$prompt\" \
-        -n 128 \
-        -ngl 99 \
-        -c 2048 \
-        --temp 0.1 \
-        --top-p 0.9 \
-        --top-k 10 \
-        --cache-type-k $cache_k \
-        --cache-type-v $cache_v \
-        $fa_flag \
-        --single-turn \
-        --no-display-prompt \
-        -rea off" "$outfile" > /dev/null 2>&1 || true
+    script -q -c "$(printf '%q ' "${cmd[@]}")" "$outfile" > /dev/null 2>&1 || true
 }
 
 echo ""

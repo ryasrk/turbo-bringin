@@ -26,25 +26,28 @@ function escapeHtml(str) {
 // ── Sentinel helpers ───────────────────────────────────────────
 // We replace protected regions with unique sentinels so later regex
 // passes don't corrupt them.
+// H3 fix: sentinels are now scoped per-render via a context object
+// to prevent concurrent render corruption.
 
-let _sentinelCounter = 0;
-const _sentinels = new Map();
+function createSentinelContext() {
+  return { counter: 0, map: new Map() };
+}
 
-function sentinel(html) {
-  const key = `\x00SENTINEL_${_sentinelCounter++}\x00`;
-  _sentinels.set(key, html);
+function sentinel(html, ctx) {
+  const key = `\x00SENTINEL_${ctx.counter++}\x00`;
+  ctx.map.set(key, html);
   return key;
 }
 
-function restoreSentinels(text) {
+function restoreSentinels(text, ctx) {
   let result = text;
   // Iterate until no sentinels remain (handles nested)
   let safety = 0;
   while (result.includes('\x00SENTINEL_') && safety++ < 200) {
-    for (const [key, value] of _sentinels) {
+    for (const [key, value] of ctx.map) {
       if (result.includes(key)) {
         result = result.split(key).join(value);
-        _sentinels.delete(key);
+        ctx.map.delete(key);
       }
     }
   }
@@ -89,11 +92,13 @@ export function renderThinkingBlock(text) {
   const { thinking } = stripThinking(text);
   if (!thinking) return '';
 
-  const rendered = renderInlineMarkdown(escapeHtml(thinking));
+  const thinkingCtx = createSentinelContext();
+  const rendered = renderInlineMarkdown(escapeHtml(thinking), thinkingCtx);
+  const restoredRendered = restoreSentinels(rendered, thinkingCtx);
   return (
     '<details class="thinking-block">' +
-    '<summary class="thinking-summary">💭 Thinking…</summary>' +
-    `<div class="thinking-content">${rendered}</div>` +
+    '<summary class="thinking-summary">Thinking...</summary>' +
+    `<div class="thinking-content">${restoredRendered}</div>` +
     '</details>'
   );
 }
@@ -127,7 +132,7 @@ export function highlightCode(code, language) {
 const MERMAID_ID_PREFIX = 'mermaid-';
 let _mermaidCounter = 0;
 
-function renderCodeBlocks(text) {
+function renderCodeBlocks(text, ctx) {
   // Match complete fenced code blocks
   return text.replace(
     /```(\w*)\n([\s\S]*?)```/g,
@@ -142,17 +147,20 @@ function renderCodeBlocks(text) {
         return sentinel(
           `<div class="mermaid-container">` +
           `<pre class="mermaid" id="${id}">${escapedCode}</pre>` +
-          `</div>`
+          `</div>`,
+          ctx
         );
       }
 
       const highlighted = highlightCode(trimmed, langLower || undefined);
       const langLabel = langLower ? `<span class="code-lang">${escapeHtml(langLower)}</span>` : '';
+      // H2 fix: use data-copy attribute instead of inline onclick handler
       return sentinel(
         `<div class="code-block-wrapper">` +
-        `<div class="code-block-header">${langLabel}<button class="copy-btn" onclick="navigator.clipboard.writeText(this.closest('.code-block-wrapper').querySelector('code').textContent).then(()=>{this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',1500)})">Copy</button></div>` +
+        `<div class="code-block-header">${langLabel}<button class="copy-btn" data-copy>Copy</button></div>` +
         `<pre class="code-block">${highlighted}</pre>` +
-        `</div>`
+        `</div>`,
+        ctx
       );
     }
   );
@@ -162,7 +170,7 @@ function renderCodeBlocks(text) {
  * Handle unclosed code blocks at end of streaming text.
  * Shows them as in-progress code blocks.
  */
-function renderPartialCodeBlock(text) {
+function renderPartialCodeBlock(text, ctx) {
   const unclosedMatch = text.match(/```(\w*)\n([\s\S]*)$/);
   if (!unclosedMatch) return text;
 
@@ -178,7 +186,7 @@ function renderPartialCodeBlock(text) {
     `<pre class="code-block">${highlighted}</pre>` +
     `</div>`;
 
-  return before + sentinel(block);
+  return before + sentinel(block, ctx);
 }
 
 // ── LaTeX math rendering ───────────────────────────────────────
@@ -187,7 +195,7 @@ function renderPartialCodeBlock(text) {
  * Render LaTeX expressions using KaTeX.
  * Handles both $$block$$ and $inline$ math.
  */
-export function renderMath(text) {
+export function renderMath(text, ctx) {
   if (typeof katex === 'undefined') return text;
 
   // Block math: $$…$$
@@ -197,7 +205,7 @@ export function renderMath(text) {
         displayMode: true,
         throwOnError: false,
         output: 'htmlAndMathml',
-      }));
+      }), ctx);
     } catch {
       return `<span class="math-error">${escapeHtml(expr)}</span>`;
     }
@@ -210,7 +218,7 @@ export function renderMath(text) {
         displayMode: false,
         throwOnError: false,
         output: 'htmlAndMathml',
-      }));
+      }), ctx);
     } catch {
       return `<span class="math-error">${escapeHtml(expr)}</span>`;
     }
@@ -224,7 +232,7 @@ export function renderMath(text) {
 /**
  * Parse and render a markdown table string to HTML <table>.
  */
-export function renderTable(text) {
+export function renderTable(text, ctx) {
   const lines = text.trim().split('\n');
   if (lines.length < 2) return text;
 
@@ -250,7 +258,7 @@ export function renderTable(text) {
   let html = '<div class="table-wrapper"><table class="md-table"><thead><tr>';
   for (let i = 0; i < headers.length; i++) {
     const align = aligns[i] || 'left';
-    html += `<th style="text-align:${align}">${renderInlineMarkdown(headers[i])}</th>`;
+    html += `<th style="text-align:${align}">${renderInlineMarkdown(headers[i], ctx)}</th>`;
   }
   html += '</tr></thead><tbody>';
 
@@ -261,7 +269,7 @@ export function renderTable(text) {
     for (let i = 0; i < headers.length; i++) {
       const align = aligns[i] || 'left';
       const cellContent = cells[i] !== undefined ? cells[i] : '';
-      html += `<td style="text-align:${align}">${renderInlineMarkdown(cellContent)}</td>`;
+      html += `<td style="text-align:${align}">${renderInlineMarkdown(cellContent, ctx)}</td>`;
     }
     html += '</tr>';
   }
@@ -270,20 +278,20 @@ export function renderTable(text) {
   return html;
 }
 
-function renderTables(text) {
+function renderTables(text, ctx) {
   // Match blocks of lines that look like a table
   return text.replace(
     /((?:^\|.+\|$\n?){2,})/gm,
-    (tableBlock) => sentinel(renderTable(tableBlock))
+    (tableBlock) => sentinel(renderTable(tableBlock, ctx), ctx)
   );
 }
 
 // ── Inline markdown transforms ─────────────────────────────────
 
-function renderInlineMarkdown(text) {
+function renderInlineMarkdown(text, ctx) {
   // Inline code (protect first)
   text = text.replace(/`([^`]+)`/g, (_m, code) =>
-    sentinel(`<code class="inline-code">${escapeHtml(code)}</code>`)
+    sentinel(`<code class="inline-code">${escapeHtml(code)}</code>`, ctx)
   );
 
   // Bold + italic
@@ -295,12 +303,12 @@ function renderInlineMarkdown(text) {
   // Strikethrough
   text = text.replace(/~~(.+?)~~/g, '<del>$1</del>');
 
-  // Auto-linkify URLs (http/https)
+  // C2 fix: Auto-linkify URLs — strip trailing punctuation that's not part of the URL
   text = text.replace(
-    /(?<!")(?<!')\b(https?:\/\/[^\s<>\])"']+)/g,
-    (url) => {
+    /(?<!")(?<!')\b(https?:\/\/[^\s<>\])"']+?)([.,)!?:;]*)(?=\s|$|<)/g,
+    (_match, url, trailing) => {
       const safeUrl = escapeHtml(url);
-      return sentinel(`<a href="${safeUrl}" target="_blank" rel="noopener noreferrer">${safeUrl}</a>`);
+      return sentinel(`<a href="${safeUrl}" target="_blank" rel="noopener noreferrer">${safeUrl}</a>`, ctx) + trailing;
     }
   );
 
@@ -309,7 +317,7 @@ function renderInlineMarkdown(text) {
 
 // ── Block-level markdown ───────────────────────────────────────
 
-function renderBlockElements(text) {
+function renderBlockElements(text, ctx) {
   const lines = text.split('\n');
   const result = [];
   let inList = false;
@@ -333,7 +341,7 @@ function renderBlockElements(text) {
     if (headingMatch) {
       flushList();
       const level = headingMatch[1].length;
-      result.push(`<h${level}>${renderInlineMarkdown(headingMatch[2])}</h${level}>`);
+      result.push(`<h${level}>${renderInlineMarkdown(headingMatch[2], ctx)}</h${level}>`);
       continue;
     }
 
@@ -354,7 +362,7 @@ function renderBlockElements(text) {
         i++;
         quoteBlock += '\n' + lines[i].replace(/^&gt;\s?/, '');
       }
-      result.push(`<blockquote>${renderInlineMarkdown(quoteBlock)}</blockquote>`);
+      result.push(`<blockquote>${renderInlineMarkdown(quoteBlock, ctx)}</blockquote>`);
       continue;
     }
 
@@ -366,7 +374,7 @@ function renderBlockElements(text) {
         inList = true;
         listType = 'ul';
       }
-      listItems.push(`<li>${renderInlineMarkdown(ulMatch[2])}</li>`);
+      listItems.push(`<li>${renderInlineMarkdown(ulMatch[2], ctx)}</li>`);
       continue;
     }
 
@@ -378,7 +386,7 @@ function renderBlockElements(text) {
         inList = true;
         listType = 'ol';
       }
-      listItems.push(`<li>${renderInlineMarkdown(olMatch[2])}</li>`);
+      listItems.push(`<li>${renderInlineMarkdown(olMatch[2], ctx)}</li>`);
       continue;
     }
 
@@ -387,7 +395,7 @@ function renderBlockElements(text) {
     if (line.trim() === '') {
       result.push('');
     } else {
-      result.push(renderInlineMarkdown(line));
+      result.push(renderInlineMarkdown(line, ctx));
     }
   }
 
@@ -440,9 +448,8 @@ function triggerMermaidRender() {
 export function renderMarkdown(text) {
   if (!text) return '';
 
-  // Reset sentinels for this render pass
-  _sentinelCounter = 0;
-  _sentinels.clear();
+  // H3 fix: create a per-render sentinel context
+  const ctx = createSentinelContext();
 
   // 1. Extract thinking blocks
   const thinkingHtml = renderThinkingBlock(text);
@@ -452,23 +459,23 @@ export function renderMarkdown(text) {
   let html = escapeHtml(content);
 
   // 3. Fenced code blocks (before other transforms to protect contents)
-  html = renderCodeBlocks(html);
-  html = renderPartialCodeBlock(html);
+  html = renderCodeBlocks(html, ctx);
+  html = renderPartialCodeBlock(html, ctx);
 
   // 4. Math rendering (before inline transforms eat the $)
-  html = renderMath(html);
+  html = renderMath(html, ctx);
 
   // 5. Tables
-  html = renderTables(html);
+  html = renderTables(html, ctx);
 
   // 6. Block-level elements (headings, lists, blockquotes, hr)
-  html = renderBlockElements(html);
+  html = renderBlockElements(html, ctx);
 
   // 7. Paragraph wrapping
   html = wrapParagraphs(html);
 
   // 8. Restore all protected regions
-  html = restoreSentinels(html);
+  html = restoreSentinels(html, ctx);
 
   // 9. Prepend thinking block if present
   if (thinkingHtml) {

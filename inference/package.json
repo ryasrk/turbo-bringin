@@ -1,0 +1,12 @@
+{
+  "name": "tenrary-x-inference",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node manager.js turboquant",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "ws": "^8.20.0"
+  }
+}

@@ -5,25 +5,28 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Tenrary-X Chat</title>
   <!-- Syntax highlighting -->
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" integrity="sha384-wH75j6z1lH97ZOpMOInqhgKzFkAInZPPSPlZpYKYTOqsaizPvhQZmAtLcPKXpLyH" crossorigin="anonymous" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js" integrity="sha384-F/bZzf7p3Joyp5psL90p/p89AZJsndkSoGwRpXcZhleCWhd8SnRuoYo4d0yirjJp" crossorigin="anonymous"></script>
   <!-- KaTeX for math -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" />
-  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" integrity="sha384-n8MVd4RsNIU0tAv4ct0nTaAbDJwPJzDEaqSD1odI+WdtXRGWt2kTvGFasHpSy3SV" crossorigin="anonymous" />
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js" integrity="sha384-XjKyOOlGwcjNTAIQHIpgOno0Hl1YQqzUOEleOLALmuqehneUG+vnGctmUb0ZY0l8" crossorigin="anonymous"></script>
   <!-- Mermaid diagrams -->
-  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <!-- TODO: Add SRI hash (mermaid@10 is a version range, pin to exact version for stable hash) -->
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js" integrity="sha384-enVdc7lTHDGtpROV85t9+VqPC2EyyB0hsRD0MrvQnHUsHmTHIz2D8SPP4EnBkstH" crossorigin="anonymous"></script>
   <link rel="stylesheet" href="/src/style.css" />
 </head>
 <body>
+  <a href="#chat-container" class="sr-only skip-link">Skip to chat</a>
   <div id="app">
     <!-- Sidebar -->
-    <aside class="sidebar" id="sidebar">
+    <aside class="sidebar" id="sidebar" aria-label="Chat history">
       <div class="sidebar-header">
         <button id="new-chat-btn" title="New chat (Ctrl+N)">+ New Chat</button>
-        <input type="text" id="search-conversations" placeholder="Search..." />
+        <input type="text" id="search-conversations" placeholder="Search..." aria-label="Search conversations" />
       </div>
       <div class="conversation-list" id="conversation-list"></div>
     </aside>
+    <div class="sidebar-backdrop" id="sidebar-backdrop" hidden></div>
 
     <!-- Main content -->
     <div class="main-content">
@@ -35,7 +38,7 @@
           <span class="badge" id="mode-badge">turboquant</span>
         </div>
         <div class="header-right">
-          <div class="context-bar" id="context-bar" title="Context usage">
+          <div class="context-bar" id="context-bar" title="Context usage" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" aria-label="Context usage">
             <div class="context-fill" id="context-fill"></div>
             <span class="context-label" id="context-label">0%</span>
           </div>
@@ -43,21 +46,21 @@
             <option value="turboquant">TurboQuant</option>
             <option value="standard">Standard (f16)</option>
           </select>
-          <button id="settings-btn" title="Settings (⚙)">⚙</button>
-          <button id="shortcuts-btn" title="Keyboard shortcuts (?)">?</button>
+          <button id="settings-btn" title="Settings">⚙</button>
+          <button id="shortcuts-btn" title="Keyboard shortcuts">?</button>
         </div>
       </header>
 
       <!-- Chat Area -->
       <main class="chat-container" id="chat-container">
         <div class="welcome" id="welcome">
-          <div class="welcome-icon">⚡</div>
+          <div class="welcome-icon">TX</div>
           <h2>Bonsai-8B • 1-bit Inference</h2>
           <p>Ultra-efficient 8B model with TurboQuant KV compression</p>
           <div class="stats-bar">
-            <span class="stat">🧠 1.16 GB model</span>
-            <span class="stat">⚡ ~90 t/s</span>
-            <span class="stat">📦 72% KV savings</span>
+            <span class="stat">1.16 GB model</span>
+            <span class="stat">~90 t/s</span>
+            <span class="stat">72% KV savings</span>
           </div>
           <div class="suggestions" id="suggestions">
             <button class="suggestion-chip" data-prompt="Explain quantum computing in simple terms">Explain quantum computing</button>
@@ -72,146 +75,152 @@
       <!-- Input Area -->
       <footer class="input-area">
         <div class="input-wrapper">
+          <input type="file" id="file-upload-doc" hidden accept=".txt,.md,.json,.csv,.pdf,.py,.js,.ts" />
+          <input type="file" id="file-upload-img" hidden accept="image/*" />
+          <div class="composer-tools">
+            <div class="plus-menu-container">
+              <button id="plus-btn" class="input-icon-btn" type="button" title="Tools" aria-label="Open tools" aria-haspopup="menu" aria-expanded="false" aria-controls="plus-menu">+</button>
+              <div class="plus-menu" id="plus-menu" role="menu" hidden>
+                <button class="plus-menu-item" type="button" role="menuitem" data-action="upload-doc">Upload Document</button>
+                <button class="plus-menu-item" type="button" role="menuitem" data-action="upload-image">Upload Image</button>
+              </div>
+            </div>
+            <button id="reasoning-toggle-btn" class="reasoning-toggle-btn" type="button" aria-pressed="false">Reasoning Off</button>
+          </div>
           <textarea
             id="user-input"
             placeholder="Send a message... (Shift+Enter for new line)"
             rows="1"
             autofocus
+            aria-label="Message input"
           ></textarea>
-          <button id="stop-btn" title="Stop generation (Esc)" hidden>⬛</button>
-          <button id="send-btn" title="Send (Enter)" disabled>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
-            </svg>
-          </button>
+          <div class="composer-actions">
+            <button id="stop-btn" type="button" title="Stop generation (Esc)" aria-label="Stop generation" hidden>⬛</button>
+            <button id="send-btn" type="button" title="Send (Enter)" aria-label="Send message" disabled>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
+              </svg>
+            </button>
+          </div>
         </div>
         <div class="input-footer">
           <span id="status-indicator" class="status offline">● Disconnected</span>
           <span id="token-info" class="token-info"></span>
-          <button id="export-btn" class="footer-btn" title="Export chat (Ctrl+E)">📥 Export</button>
+          <button id="export-btn" class="footer-btn" title="Export chat (Ctrl+E)">Export</button>
         </div>
       </footer>
     </div>
 
     <!-- Settings Modal -->
     <div class="modal-overlay" id="settings-modal" hidden>
-      <div class="modal">
-        <h3>Settings</h3>
-        <div class="setting-group">
-          <label>Temperature</label>
-          <input type="range" id="temp-slider" min="0" max="2" step="0.1" value="0.7" />
-          <span id="temp-value">0.7</span>
+      <div class="modal modal--wide" role="dialog" aria-modal="true" aria-labelledby="settings-title" tabindex="-1">
+        <h3 id="settings-title">Settings</h3>
+        <div class="modal-body">
+
+          <div class="settings-tabs" role="tablist">
+            <button class="settings-tab active" type="button" data-tab="general" id="tab-general" role="tab" aria-selected="true" aria-controls="panel-general">General</button>
+            <button class="settings-tab" type="button" data-tab="model" id="tab-model" role="tab" aria-selected="false" aria-controls="panel-model">Model</button>
+            <button class="settings-tab" type="button" data-tab="locale" id="tab-locale" role="tab" aria-selected="false" aria-controls="panel-locale">Locale</button>
+          </div>
+
+          <div class="settings-panel" data-panel="general" id="panel-general" role="tabpanel" aria-labelledby="tab-general">
+            <div class="setting-group">
+              <label for="system-prompt">System Prompt</label>
+              <textarea id="system-prompt" rows="3" placeholder="You are a helpful assistant.">You are a helpful assistant.</textarea>
+            </div>
+            <div class="setting-group">
+              <label for="show-thinking">Show Thinking Blocks</label>
+              <input type="checkbox" id="show-thinking" checked />
+            </div>
+            <div class="setting-group">
+              <label for="api-endpoint">API Endpoint</label>
+              <input type="text" id="api-endpoint" value="/v1/chat/completions" />
+            </div>
+          </div>
+
+          <div class="settings-panel" data-panel="model" id="panel-model" role="tabpanel" aria-labelledby="tab-model" hidden>
+            <div class="setting-group">
+              <label for="temp-slider">Temperature <span id="temp-value" class="setting-value">0.7</span></label>
+              <input type="range" id="temp-slider" min="0" max="2" step="0.1" value="0.7" />
+            </div>
+            <div class="setting-group">
+              <label for="enable-thinking">Generate Reasoning Tokens</label>
+              <input type="checkbox" id="enable-thinking" />
+              <p class="setting-note">Turn this off for faster answers and fewer generated tokens.</p>
+            </div>
+            <div class="setting-group">
+              <label for="max-tokens">Max Tokens</label>
+              <input type="number" id="max-tokens" min="32" max="4096" value="1024" />
+            </div>
+            <div class="setting-group">
+              <label for="ctx-window">Context Window</label>
+              <input type="number" id="ctx-window" min="2048" max="65536" value="65536" />
+            </div>
+          </div>
+
+          <div class="settings-panel" data-panel="locale" id="panel-locale" role="tabpanel" aria-labelledby="tab-locale" hidden>
+            <div class="setting-group">
+              <label for="user-language">Language</label>
+              <select id="user-language">
+                <option value="auto">Auto-detect</option>
+                <option value="en-US">English (US)</option>
+                <option value="en-GB">English (UK)</option>
+                <option value="id-ID">Bahasa Indonesia</option>
+                <option value="zh-CN">中文 (简体)</option>
+                <option value="ja-JP">日本語</option>
+                <option value="ko-KR">한국어</option>
+                <option value="es-ES">Español</option>
+                <option value="fr-FR">Français</option>
+                <option value="de-DE">Deutsch</option>
+                <option value="pt-BR">Português (BR)</option>
+                <option value="ar-SA">العربية</option>
+              </select>
+            </div>
+            <div class="setting-group">
+              <label for="user-timezone">Timezone</label>
+              <select id="user-timezone">
+                <option value="auto">Auto-detect</option>
+              </select>
+            </div>
+            <div class="setting-group">
+              <label>Preview</label>
+              <div id="locale-preview" class="setting-preview"></div>
+            </div>
+          </div>
         </div>
-        <div class="setting-group">
-          <label>Max Tokens</label>
-          <input type="number" id="max-tokens" min="32" max="4096" value="1024" />
-        </div>
-        <div class="setting-group">
-          <label>Context Window</label>
-          <input type="number" id="ctx-window" min="2048" max="65536" value="16384" />
-        </div>
-        <div class="setting-group">
-          <label>System Prompt</label>
-          <textarea id="system-prompt" rows="3" placeholder="You are a helpful assistant.">You are a helpful assistant.</textarea>
-        </div>
-        <div class="setting-group">
-          <label>Show Thinking Blocks</label>
-          <input type="checkbox" id="show-thinking" checked />
-        </div>
-        <div class="setting-group">
-          <label>API Endpoint</label>
-          <input type="text" id="api-endpoint" value="/v1/chat/completions" />
-        </div>
+
         <div class="modal-actions">
-          <button id="settings-close">Close</button>
+          <button id="settings-close" type="button">Close</button>
         </div>
       </div>
     </div>
 
     <!-- Shortcuts Modal -->
     <div class="modal-overlay" id="shortcuts-modal" hidden>
-      <div class="modal">
-        <h3>Keyboard Shortcuts</h3>
-        <div id="shortcuts-list" class="shortcuts-list"></div>
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="shortcuts-title" tabindex="-1">
+        <h3 id="shortcuts-title">Keyboard Shortcuts</h3>
+        <div class="modal-body">
+          <div id="shortcuts-list" class="shortcuts-list"></div>
+        </div>
         <div class="modal-actions">
-          <button id="shortcuts-close">Close</button>
+          <button id="shortcuts-close" type="button">Close</button>
         </div>
       </div>
     </div>
 
     <!-- Export Modal -->
     <div class="modal-overlay" id="export-modal" hidden>
-      <div class="modal">
-        <h3>Export Chat</h3>
-        <div class="export-options">
-          <button class="export-option" data-format="markdown">📄 Markdown</button>
-          <button class="export-option" data-format="json">📋 JSON</button>
-          <button class="export-option" data-format="text">📝 Plain Text</button>
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="export-title" tabindex="-1">
+        <h3 id="export-title">Export Chat</h3>
+        <div class="modal-body">
+          <div class="export-options">
+            <button class="export-option" type="button" data-format="markdown">Markdown</button>
+            <button class="export-option" type="button" data-format="json">JSON</button>
+            <button class="export-option" type="button" data-format="text">Plain Text</button>
+          </div>
         </div>
         <div class="modal-actions">
-          <button id="export" class="token-info"></span>
-          <button id="export-btn" class="footer-btn" title="Export chat (Ctrl+E)">📥 Export</button>
-        </div>
-      </footer>
-    </div>
-
-    <!-- Settings Modal -->
-    <div class="modal-overlay" id="settings-modal" hidden>
-      <div class="modal">
-        <h3>Settings</h3>
-        <div class="setting-group">
-          <label>Temperature</label>
-          <input type="range" id="temp-slider" min="0" max="2" step="0.1" value="0.7" />
-          <span id="temp-value">0.7</span>
-        </div>
-        <div class="setting-group">
-          <label>Max Tokens</label>
-          <input type="number" id="max-tokens" min="32" max="4096" value="1024" />
-        </div>
-        <div class="setting-group">
-          <label>Context Window</label>
-          <input type="number" id="ctx-window" min="2048" max="65536" value="16384" />
-        </div>
-        <div class="setting-group">
-          <label>System Prompt</label>
-          <textarea id="system-prompt" rows="3" placeholder="You are a helpful assistant.">You are a helpful assistant.</textarea>
-        </div>
-        <div class="setting-group">
-          <label>Show Thinking Blocks</label>
-          <input type="checkbox" id="show-thinking" checked />
-        </div>
-        <div class="setting-group">
-          <label>API Endpoint</label>
-          <input type="text" id="api-endpoint" value="/v1/chat/completions" />
-        </div>
-        <div class="modal-actions">
-          <button id="settings-close">Close</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Shortcuts Modal -->
-    <div class="modal-overlay" id="shortcuts-modal" hidden>
-      <div class="modal">
-        <h3>Keyboard Shortcuts</h3>
-        <div id="shortcuts-list" class="shortcuts-list"></div>
-        <div class="modal-actions">
-          <button id="shortcuts-close">Close</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Export Modal -->
-    <div class="modal-overlay" id="export-modal" hidden>
-      <div class="modal">
-        <h3>Export Chat</h3>
-        <div class="export-options">
-          <button class="export-option" data-format="markdown">📄 Markdown</button>
-          <button class="export-option" data-format="json">📋 JSON</button>
-          <button class="export-option" data-format="text">📝 Plain Text</button>
-        </div>
-        <div class="modal-actions">
-          <button id="export-close">Close</button>
+          <button id="export-close" type="button">Close</button>
         </div>
       </div>
     </div>

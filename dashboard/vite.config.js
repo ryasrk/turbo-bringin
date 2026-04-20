@@ -15,6 +15,7 @@ export default defineConfig({
       '/manager': {
         target: 'http://localhost:3002',
         changeOrigin: true,
+        ws: true,
         rewrite: (path) => path.replace(/^\/manager/, ''),
       },
     },

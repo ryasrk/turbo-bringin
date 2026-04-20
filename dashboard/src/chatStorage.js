@@ -89,12 +89,23 @@ async function idbDelete(id) {
 
 // ── Storage layer (localStorage → IndexedDB fallback) ──────────
 
+const DANGEROUS_KEYS = new Set(['__proto__', 'constructor', 'toString', 'valueOf', 'hasOwnProperty']);
+
 function readAllLocal() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : {};
+    if (!raw) return Object.create(null);
+    const parsed = JSON.parse(raw);
+    // H1 fix: filter prototype pollution keys and use null-prototype container
+    const safe = Object.create(null);
+    for (const key of Object.keys(parsed)) {
+      if (!DANGEROUS_KEYS.has(key)) {
+        safe[key] = parsed[key];
+      }
+    }
+    return safe;
   } catch {
-    return {};
+    return Object.create(null);
   }
 }
 
@@ -116,7 +127,7 @@ function writeAllLocal(conversations) {
 async function readAll() {
   if (_idbFallback) {
     const list = await idbGetAll();
-    const map = {};
+    const map = Object.create(null);
     for (const c of list) map[c.id] = c;
     return map;
   }
@@ -253,7 +264,8 @@ let _autoSaveTimer = null;
 export function autoSave(conversation) {
   clearTimeout(_autoSaveTimer);
   _autoSaveTimer = setTimeout(() => {
-    saveConversation(conversation);
+    // H4 fix: catch and log unresolved promise errors
+    saveConversation(conversation).catch((err) => console.error('Auto-save failed:', err));
   }, DEBOUNCE_MS);
 }
 
@@ -325,8 +337,10 @@ export function importFromJSON(jsonString) {
   }
 
   const ts = now();
+  // C3 fix: always generate a new ID; preserve imported ID as originalId
   return {
-    id: data.id && typeof data.id === 'string' ? data.id : generateId(),
+    id: generateId(),
+    originalId: data.id && typeof data.id === 'string' ? data.id : undefined,
     title: typeof data.title === 'string' ? data.title : 'Imported Chat',
     messages: Array.isArray(data.messages)
       ? data.messages.map((m) => ({

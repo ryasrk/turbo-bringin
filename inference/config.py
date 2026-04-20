@@ -41,7 +41,7 @@ class TurboQuantConfig:
 
 @dataclass
 class ServerConfig:
-    host: str = "0.0.0.0"
+    host: str = "127.0.0.1"
     api_key: str = ""
     log_level: str = "info"
 
