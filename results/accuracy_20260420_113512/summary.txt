@@ -1,0 +1,3 @@
+  baseline: 9/10 (90%)
+  q8_quality: 8/10 (80%)
+  q4_aggressive: 9/10 (90%)

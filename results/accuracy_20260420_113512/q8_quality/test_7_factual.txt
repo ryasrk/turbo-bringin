@@ -1,0 +1,44 @@
+Script started on 2026-04-20 11:35:47+07:00 [COMMAND="engines/llama-cpp-prismml/build/bin/llama-cli         -m models/Bonsai-8B-Q1_0.gguf         -p "What is the chemical formula for water?"         -n 128         -ngl 99         -c 2048         --temp 0.1         --top-p 0.9         --top-k 10         --cache-type-k q8_0         --cache-type-v q8_0                  --single-turn         --no-display-prompt         -rea off" TERM="xterm-256color" TTY="/dev/pts/6" COLUMNS="-1" LINES="-1"]
+ggml_cuda_init: found 1 CUDA devices (Total VRAM: 8187 MiB):
+  Device 0: NVIDIA GeForce RTX 4060 Laptop GPU, compute capability 8.9, VMM: yes, VRAM: 8187 MiB
+
+Loading model... |-\|/-\|/-\ 
+
+
+▄▄ ▄▄
+██ ██
+██ ██  ▀▀█▄ ███▄███▄  ▀▀█▄    ▄████ ████▄ ████▄
+██ ██ ▄█▀██ ██ ██ ██ ▄█▀██    ██    ██ ██ ██ ██
+██ ██ ▀█▄██ ██ ██ ██ ▀█▄██ ██ ▀████ ████▀ ████▀
+                                    ██    ██
+                                    ▀▀    ▀▀
+
+build      : b8846-d104cf1b6
+model      : Bonsai-8B-Q1_0.gguf
+modalities : text
+
+available commands:
+  /exit or Ctrl+C     stop or exit
+  /regen              regenerate the last response
+  /clear              clear the chat history
+  /read <file>        add a text file
+  /glob <pattern>     add text files using globbing pattern
+
+[1m[32m
+> What is the chemical formula for water?
+[0m
+| The chemical formula for water is **H₂O**. 
+
+This means each molecule of water consists of **two hydrogen atoms** and **one oxygen atom**.
+[35m
+[ Prompt: 417.3 t/s | Generation: 95.8 t/s ]
+[0m
+Exiting...
+llama_memory_breakdown_print: | memory breakdown [MiB]          | total   free    self   model   context   compute    unaccounted |
+llama_memory_breakdown_print: |   - CUDA0 (RTX 4060 Laptop GPU) |  8187 = 5556 + (1473 =  1015 +     153 +     304) +        1158 |
+llama_memory_breakdown_print: |   - Host                        |                  103 =    83 +       0 +      20                |
+
+Script done on 2026-04-20 11:35:49+07:00 [COMMAND_EXIT_CODE="0"]
+---
+Expected: H₂O
+Category: factual

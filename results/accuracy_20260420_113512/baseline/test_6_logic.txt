@@ -1,0 +1,48 @@
+Script started on 2026-04-20 11:35:24+07:00 [COMMAND="engines/llama-cpp-prismml/build/bin/llama-cli         -m models/Bonsai-8B-Q1_0.gguf         -p "Is the statement 'All mammals lay eggs' true or false?"         -n 128         -ngl 99         -c 2048         --temp 0.1         --top-p 0.9         --top-k 10         --cache-type-k f16         --cache-type-v f16                  --single-turn         --no-display-prompt         -rea off" TERM="xterm-256color" TTY="/dev/pts/6" COLUMNS="-1" LINES="-1"]
+ggml_cuda_init: found 1 CUDA devices (Total VRAM: 8187 MiB):
+  Device 0: NVIDIA GeForce RTX 4060 Laptop GPU, compute capability 8.9, VMM: yes, VRAM: 8187 MiB
+
+Loading model... |-\|/-\|/- 
+
+
+▄▄ ▄▄
+██ ██
+██ ██  ▀▀█▄ ███▄███▄  ▀▀█▄    ▄████ ████▄ ████▄
+██ ██ ▄█▀██ ██ ██ ██ ▄█▀██    ██    ██ ██ ██ ██
+██ ██ ▀█▄██ ██ ██ ██ ▀█▄██ ██ ▀████ ████▀ ████▀
+                                    ██    ██
+                                    ▀▀    ▀▀
+
+build      : b8846-d104cf1b6
+model      : Bonsai-8B-Q1_0.gguf
+modalities : text
+
+available commands:
+  /exit or Ctrl+C     stop or exit
+  /regen              regenerate the last response
+  /clear              clear the chat history
+  /read <file>        add a text file
+  /glob <pattern>     add text files using globbing pattern
+
+[1m[32m
+> Is the statement 'All mammals lay eggs' true or false?
+[0m
+| The statement **"All mammals lay eggs"** is **false**.
+
+### Explanation:
+- **Mammals** are a class of animals that includes humans, whales, dolphins, and many others.
+- A defining characteristic of **mammals** is that they give birth to **live young** (called offspring or young), not eggs.
+- While **some mammals** (like monotremes such as the **platypus** and **marsupials** like the **koala**) do lay eggs, this is **not a universal trait** of all mammals.
+- Most mammals, including **carnivores,
+[35m
+[ Prompt: 557.7 t/s | Generation: 93.6 t/s ]
+[0m
+Exiting...
+llama_memory_breakdown_print: | memory breakdown [MiB]          | total   free    self   model   context   compute    unaccounted |
+llama_memory_breakdown_print: |   - CUDA0 (RTX 4060 Laptop GPU) |  8187 = 5468 + (1608 =  1015 +     288 +     304) +        1111 |
+llama_memory_breakdown_print: |   - Host                        |                  103 =    83 +       0 +      20                |
+
+Script done on 2026-04-20 11:35:27+07:00 [COMMAND_EXIT_CODE="0"]
+---
+Expected: false
+Category: logic

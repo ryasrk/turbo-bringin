@@ -1,0 +1,344 @@
+/**
+ * Chat Storage & Export Module
+ * localStorage persistence with IndexedDB fallback, debounced auto-save,
+ * multi-conversation management, and Markdown/JSON/text export.
+ */
+
+const STORAGE_KEY = 'tenrary_conversations';
+const ACTIVE_KEY = 'tenrary_active_conversation';
+const MAX_CONVERSATIONS = 50;
+const DEBOUNCE_MS = 500;
+const IDB_NAME = 'tenrary_chat_db';
+const IDB_STORE = 'conversations';
+const IDB_VERSION = 1;
+
+// ── Helpers ────────────────────────────────────────────────────
+
+function generateId() {
+  return `conv_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function now() {
+  return Date.now();
+}
+
+// ── IndexedDB fallback ─────────────────────────────────────────
+
+let _idbFallback = false;
+let _idbReady = null;
+
+function openIDB() {
+  if (_idbReady) return _idbReady;
+  _idbReady = new Promise((resolve, reject) => {
+    const req = indexedDB.open(IDB_NAME, IDB_VERSION);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(IDB_STORE)) {
+        db.createObjectStore(IDB_STORE, { keyPath: 'id' });
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+  return _idbReady;
+}
+
+async function idbGetAll() {
+  const db = await openIDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(IDB_STORE, 'readonly');
+    const store = tx.objectStore(IDB_STORE);
+    const req = store.getAll();
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function idbGet(id) {
+  const db = await openIDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(IDB_STORE, 'readonly');
+    const store = tx.objectStore(IDB_STORE);
+    const req = store.get(id);
+    req.onsuccess = () => resolve(req.result ?? null);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function idbPut(conversation) {
+  const db = await openIDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(IDB_STORE, 'readwrite');
+    const store = tx.objectStore(IDB_STORE);
+    const req = store.put(conversation);
+    req.onsuccess = () => resolve();
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function idbDelete(id) {
+  const db = await openIDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(IDB_STORE, 'readwrite');
+    const store = tx.objectStore(IDB_STORE);
+    const req = store.delete(id);
+    req.onsuccess = () => resolve();
+    req.onerror = () => reject(req.error);
+  });
+}
+
+// ── Storage layer (localStorage → IndexedDB fallback) ──────────
+
+function readAllLocal() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeAllLocal(conversations) {
+  try {
+    const json = JSON.stringify(conversations);
+    localStorage.setItem(STORAGE_KEY, json);
+    _idbFallback = false;
+    return true;
+  } catch (e) {
+    // QuotaExceededError or similar — switch to IndexedDB
+    if (e instanceof DOMException) {
+      _idbFallback = true;
+    }
+    return false;
+  }
+}
+
+async function readAll() {
+  if (_idbFallback) {
+    const list = await idbGetAll();
+    const map = {};
+    for (const c of list) map[c.id] = c;
+    return map;
+  }
+  return readAllLocal();
+}
+
+async function writeOne(conversation) {
+  if (_idbFallback) {
+    await idbPut(conversation);
+    return;
+  }
+  const all = readAllLocal();
+  all[conversation.id] = conversation;
+  const ok = writeAllLocal(all);
+  if (!ok) {
+    // Fell back to IDB mid-write — migrate and retry
+    await migrateToIDB(all);
+    await idbPut(conversation);
+  }
+}
+
+async function removeOne(id) {
+  if (_idbFallback) {
+    await idbDelete(id);
+    return;
+  }
+  const all = readAllLocal();
+  delete all[id];
+  writeAllLocal(all);
+}
+
+async function migrateToIDB(conversations) {
+  _idbFallback = true;
+  const entries = Object.values(conversations);
+  for (const c of entries) {
+    await idbPut(c);
+  }
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch { /* ignore */ }
+}
+
+// ── Pruning ────────────────────────────────────────────────────
+
+async function pruneIfNeeded() {
+  const all = await readAll();
+  const ids = Object.keys(all);
+  if (ids.length <= MAX_CONVERSATIONS) return;
+
+  const sorted = ids
+    .map((id) => ({ id, updatedAt: all[id].updatedAt ?? 0 }))
+    .sort((a, b) => a.updatedAt - b.updatedAt);
+
+  const toRemove = sorted.slice(0, ids.length - MAX_CONVERSATIONS);
+  for (const { id } of toRemove) {
+    await removeOne(id);
+  }
+}
+
+// ── Public API ─────────────────────────────────────────────────
+
+export function createConversation(title = 'New Chat') {
+  const ts = now();
+  return {
+    id: generateId(),
+    title,
+    messages: [],
+    createdAt: ts,
+    updatedAt: ts,
+    mode: 'turboquant',
+    settings: {},
+  };
+}
+
+export async function saveConversation(conversation) {
+  const updated = { ...conversation, updatedAt: now() };
+  await writeOne(updated);
+  await pruneIfNeeded();
+  return updated;
+}
+
+export async function loadConversation(id) {
+  if (_idbFallback) {
+    return idbGet(id);
+  }
+  const all = readAllLocal();
+  return all[id] ?? null;
+}
+
+export async function listConversations() {
+  const all = await readAll();
+  return Object.values(all)
+    .map((c) => ({
+      id: c.id,
+      title: c.title,
+      updatedAt: c.updatedAt,
+      messageCount: c.messages ? c.messages.length : 0,
+    }))
+    .sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+export async function deleteConversation(id) {
+  await removeOne(id);
+  const activeId = getActiveConversationId();
+  if (activeId === id) {
+    try { localStorage.removeItem(ACTIVE_KEY); } catch { /* ignore */ }
+  }
+}
+
+// ── Active conversation tracking ───────────────────────────────
+
+export function getActiveConversationId() {
+  try {
+    return localStorage.getItem(ACTIVE_KEY) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export function setActiveConversationId(id) {
+  try {
+    if (id == null) {
+      localStorage.removeItem(ACTIVE_KEY);
+    } else {
+      localStorage.setItem(ACTIVE_KEY, id);
+    }
+  } catch { /* ignore */ }
+}
+
+// ── Debounced auto-save ────────────────────────────────────────
+
+let _autoSaveTimer = null;
+
+export function autoSave(conversation) {
+  clearTimeout(_autoSaveTimer);
+  _autoSaveTimer = setTimeout(() => {
+    saveConversation(conversation);
+  }, DEBOUNCE_MS);
+}
+
+// ── Export formats ─────────────────────────────────────────────
+
+export function exportAsMarkdown(conversation) {
+  const lines = [`# ${conversation.title}`, ''];
+  const created = new Date(conversation.createdAt).toLocaleString();
+  lines.push(`*Created: ${created}*`, '');
+  if (conversation.mode) {
+    lines.push(`**Mode:** ${conversation.mode}`, '');
+  }
+  lines.push('---', '');
+
+  for (const msg of conversation.messages) {
+    const role = msg.role === 'user' ? '🧑 **User**' : '🤖 **Assistant**';
+    const time = msg.timestamp
+      ? ` *(${new Date(msg.timestamp).toLocaleTimeString()})*`
+      : '';
+    lines.push(`### ${role}${time}`, '');
+    lines.push(msg.content, '');
+
+    if (msg.stats) {
+      const parts = [];
+      if (msg.stats.tokens) parts.push(`${msg.stats.tokens} tokens`);
+      if (msg.stats.tokensPerSecond) parts.push(`${msg.stats.tokensPerSecond.toFixed(1)} tok/s`);
+      if (msg.stats.duration) parts.push(`${(msg.stats.duration / 1000).toFixed(2)}s`);
+      if (parts.length) {
+        lines.push(`> ${parts.join(' · ')}`, '');
+      }
+    }
+  }
+
+  return lines.join('\n');
+}
+
+export function exportAsJSON(conversation) {
+  return JSON.stringify(conversation, null, 2);
+}
+
+export function exportAsText(conversation) {
+  const lines = [conversation.title, '='.repeat(conversation.title.length), ''];
+
+  for (const msg of conversation.messages) {
+    const label = msg.role === 'user' ? 'User' : 'Assistant';
+    const time = msg.timestamp
+      ? ` [${new Date(msg.timestamp).toLocaleTimeString()}]`
+      : '';
+    lines.push(`${label}${time}:`);
+    lines.push(msg.content);
+    lines.push('');
+  }
+
+  return lines.join('\n');
+}
+
+// ── Import ─────────────────────────────────────────────────────
+
+export function importFromJSON(jsonString) {
+  let data;
+  try {
+    data = JSON.parse(jsonString);
+  } catch {
+    throw new Error('Invalid JSON');
+  }
+
+  if (!data || typeof data !== 'object') {
+    throw new Error('Invalid conversation format');
+  }
+
+  const ts = now();
+  return {
+    id: data.id && typeof data.id === 'string' ? data.id : generateId(),
+    title: typeof data.title === 'string' ? data.title : 'Imported Chat',
+    messages: Array.isArray(data.messages)
+      ? data.messages.map((m) => ({
+          role: typeof m.role === 'string' ? m.role : 'user',
+          content: typeof m.content === 'string' ? m.content : String(m.content ?? ''),
+          timestamp: typeof m.timestamp === 'number' ? m.timestamp : ts,
+          stats: m.stats && typeof m.stats === 'object' ? m.stats : undefined,
+        }))
+      : [],
+    createdAt: typeof data.createdAt === 'number' ? data.createdAt : ts,
+    updatedAt: ts,
+    mode: typeof data.mode === 'string' ? data.mode : 'turboquant',
+    settings: data.settings && typeof data.settings === 'object' ? { ...data.settings } : {},
+  };
+}

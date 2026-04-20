@@ -1,0 +1,8 @@
+ggml_cuda_init: found 1 CUDA devices (Total VRAM: 8187 MiB):
+  Device 0: NVIDIA GeForce RTX 4060 Laptop GPU, compute capability 8.9, VMM: yes, VRAM: 8187 MiB
+llama_memory_breakdown_print: | memory breakdown [MiB]          | total   free    self   model   context   compute    unaccounted |
+llama_memory_breakdown_print: |   - CUDA0 (RTX 4060 Laptop GPU) |  8187 = 5468 + (1608 =  1015 +     288 +     304) +        1111 |
+llama_memory_breakdown_print: |   - Host                        |                  103 =    83 +       0 +      20                |
+---
+Expected: 255
+Category: math

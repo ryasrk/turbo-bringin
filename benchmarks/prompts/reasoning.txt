@@ -1,0 +1,5 @@
+You are a helpful AI assistant. Please solve this step by step.
+
+A group of people need to cross a bridge at night. They have one flashlight. The bridge can hold at most 2 people at a time. Person A can cross in 1 minute, Person B in 2 minutes, Person C in 5 minutes, and Person D in 10 minutes. When two people cross together, they move at the slower person's pace. What is the minimum total time for everyone to cross?
+
+Show your reasoning step by step, considering all possible strategies.

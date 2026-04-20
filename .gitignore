@@ -1,0 +1,29 @@
+# Models (too large for git)
+models/*.gguf
+
+# Build artifacts
+engines/
+build/
+*.o
+*.so
+
+# Node
+node_modules/
+dashboard/dist/
+
+# Python
+env
+env/
+__pycache__/
+*.pyc
+*.egg-info/
+
+# Results (keep structure, not data)
+results/*.json
+results/run_*/
+
+# Env files
+env_path.txt
+
+# OS
+.DS_Store

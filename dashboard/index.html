@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tenrary-X Chat</title>
+  <!-- Syntax highlighting -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <!-- KaTeX for math -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" />
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <!-- Mermaid diagrams -->
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <button id="new-chat-btn" title="New chat (Ctrl+N)">+ New Chat</button>
+        <input type="text" id="search-conversations" placeholder="Search..." />
+      </div>
+      <div class="conversation-list" id="conversation-list"></div>
+    </aside>
+
+    <!-- Main content -->
+    <div class="main-content">
+      <!-- Header -->
+      <header class="header">
+        <div class="header-left">
+          <button id="sidebar-toggle" title="Toggle sidebar">☰</button>
+          <h1>Tenrary-X</h1>
+          <span class="badge" id="mode-badge">turboquant</span>
+        </div>
+        <div class="header-right">
+          <div class="context-bar" id="context-bar" title="Context usage">
+            <div class="context-fill" id="context-fill"></div>
+            <span class="context-label" id="context-label">0%</span>
+          </div>
+          <select id="mode-select">
+            <option value="turboquant">TurboQuant</option>
+            <option value="standard">Standard (f16)</option>
+          </select>
+          <button id="settings-btn" title="Settings (⚙)">⚙</button>
+          <button id="shortcuts-btn" title="Keyboard shortcuts (?)">?</button>
+        </div>
+      </header>
+
+      <!-- Chat Area -->
+      <main class="chat-container" id="chat-container">
+        <div class="welcome" id="welcome">
+          <div class="welcome-icon">⚡</div>
+          <h2>Bonsai-8B • 1-bit Inference</h2>
+          <p>Ultra-efficient 8B model with TurboQuant KV compression</p>
+          <div class="stats-bar">
+            <span class="stat">🧠 1.16 GB model</span>
+            <span class="stat">⚡ ~90 t/s</span>
+            <span class="stat">📦 72% KV savings</span>
+          </div>
+          <div class="suggestions" id="suggestions">
+            <button class="suggestion-chip" data-prompt="Explain quantum computing in simple terms">Explain quantum computing</button>
+            <button class="suggestion-chip" data-prompt="Write a Python function to sort a list using quicksort">Write quicksort in Python</button>
+            <button class="suggestion-chip" data-prompt="What are the key differences between REST and GraphQL?">REST vs GraphQL</button>
+            <button class="suggestion-chip" data-prompt="Help me debug: why would a recursive function cause a stack overflow?">Debug stack overflow</button>
+          </div>
+        </div>
+        <div class="messages" id="messages"></div>
+      </main>
+
+      <!-- Input Area -->
+      <footer class="input-area">
+        <div class="input-wrapper">
+          <textarea
+            id="user-input"
+            placeholder="Send a message... (Shift+Enter for new line)"
+            rows="1"
+            autofocus
+          ></textarea>
+          <button id="stop-btn" title="Stop generation (Esc)" hidden>⬛</button>
+          <button id="send-btn" title="Send (Enter)" disabled>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
+            </svg>
+          </button>
+        </div>
+        <div class="input-footer">
+          <span id="status-indicator" class="status offline">● Disconnected</span>
+          <span id="token-info" class="token-info"></span>
+          <button id="export-btn" class="footer-btn" title="Export chat (Ctrl+E)">📥 Export</button>
+        </div>
+      </footer>
+    </div>
+
+    <!-- Settings Modal -->
+    <div class="modal-overlay" id="settings-modal" hidden>
+      <div class="modal">
+        <h3>Settings</h3>
+        <div class="setting-group">
+          <label>Temperature</label>
+          <input type="range" id="temp-slider" min="0" max="2" step="0.1" value="0.7" />
+          <span id="temp-value">0.7</span>
+        </div>
+        <div class="setting-group">
+          <label>Max Tokens</label>
+          <input type="number" id="max-tokens" min="32" max="4096" value="1024" />
+        </div>
+        <div class="setting-group">
+          <label>Context Window</label>
+          <input type="number" id="ctx-window" min="2048" max="65536" value="16384" />
+        </div>
+        <div class="setting-group">
+          <label>System Prompt</label>
+          <textarea id="system-prompt" rows="3" placeholder="You are a helpful assistant.">You are a helpful assistant.</textarea>
+        </div>
+        <div class="setting-group">
+          <label>Show Thinking Blocks</label>
+          <input type="checkbox" id="show-thinking" checked />
+        </div>
+        <div class="setting-group">
+          <label>API Endpoint</label>
+          <input type="text" id="api-endpoint" value="/v1/chat/completions" />
+        </div>
+        <div class="modal-actions">
+          <button id="settings-close">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Shortcuts Modal -->
+    <div class="modal-overlay" id="shortcuts-modal" hidden>
+      <div class="modal">
+        <h3>Keyboard Shortcuts</h3>
+        <div id="shortcuts-list" class="shortcuts-list"></div>
+        <div class="modal-actions">
+          <button id="shortcuts-close">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Export Modal -->
+    <div class="modal-overlay" id="export-modal" hidden>
+      <div class="modal">
+        <h3>Export Chat</h3>
+        <div class="export-options">
+          <button class="export-option" data-format="markdown">📄 Markdown</button>
+          <button class="export-option" data-format="json">📋 JSON</button>
+          <button class="export-option" data-format="text">📝 Plain Text</button>
+        </div>
+        <div class="modal-actions">
+          <button id="export" class="token-info"></span>
+          <button id="export-btn" class="footer-btn" title="Export chat (Ctrl+E)">📥 Export</button>
+        </div>
+      </footer>
+    </div>
+
+    <!-- Settings Modal -->
+    <div class="modal-overlay" id="settings-modal" hidden>
+      <div class="modal">
+        <h3>Settings</h3>
+        <div class="setting-group">
+          <label>Temperature</label>
+          <input type="range" id="temp-slider" min="0" max="2" step="0.1" value="0.7" />
+          <span id="temp-value">0.7</span>
+        </div>
+        <div class="setting-group">
+          <label>Max Tokens</label>
+          <input type="number" id="max-tokens" min="32" max="4096" value="1024" />
+        </div>
+        <div class="setting-group">
+          <label>Context Window</label>
+          <input type="number" id="ctx-window" min="2048" max="65536" value="16384" />
+        </div>
+        <div class="setting-group">
+          <label>System Prompt</label>
+          <textarea id="system-prompt" rows="3" placeholder="You are a helpful assistant.">You are a helpful assistant.</textarea>
+        </div>
+        <div class="setting-group">
+          <label>Show Thinking Blocks</label>
+          <input type="checkbox" id="show-thinking" checked />
+        </div>
+        <div class="setting-group">
+          <label>API Endpoint</label>
+          <input type="text" id="api-endpoint" value="/v1/chat/completions" />
+        </div>
+        <div class="modal-actions">
+          <button id="settings-close">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Shortcuts Modal -->
+    <div class="modal-overlay" id="shortcuts-modal" hidden>
+      <div class="modal">
+        <h3>Keyboard Shortcuts</h3>
+        <div id="shortcuts-list" class="shortcuts-list"></div>
+        <div class="modal-actions">
+          <button id="shortcuts-close">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Export Modal -->
+    <div class="modal-overlay" id="export-modal" hidden>
+      <div class="modal">
+        <h3>Export Chat</h3>
+        <div class="export-options">
+          <button class="export-option" data-format="markdown">📄 Markdown</button>
+          <button class="export-option" data-format="json">📋 JSON</button>
+          <button class="export-option" data-format="text">📝 Plain Text</button>
+        </div>
+        <div class="modal-actions">
+          <button id="export-close">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

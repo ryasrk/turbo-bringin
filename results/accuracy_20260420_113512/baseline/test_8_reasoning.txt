@@ -1,0 +1,50 @@
+Script started on 2026-04-20 11:35:28+07:00 [COMMAND="engines/llama-cpp-prismml/build/bin/llama-cli         -m models/Bonsai-8B-Q1_0.gguf         -p "If today is Wednesday, what day will it be in 10 days?"         -n 128         -ngl 99         -c 2048         --temp 0.1         --top-p 0.9         --top-k 10         --cache-type-k f16         --cache-type-v f16                  --single-turn         --no-display-prompt         -rea off" TERM="xterm-256color" TTY="/dev/pts/6" COLUMNS="-1" LINES="-1"]
+ggml_cuda_init: found 1 CUDA devices (Total VRAM: 8187 MiB):
+  Device 0: NVIDIA GeForce RTX 4060 Laptop GPU, compute capability 8.9, VMM: yes, VRAM: 8187 MiB
+
+Loading model... |-\|/-\|/- 
+
+
+▄▄ ▄▄
+██ ██
+██ ██  ▀▀█▄ ███▄███▄  ▀▀█▄    ▄████ ████▄ ████▄
+██ ██ ▄█▀██ ██ ██ ██ ▄█▀██    ██    ██ ██ ██ ██
+██ ██ ▀█▄██ ██ ██ ██ ▀█▄██ ██ ▀████ ████▀ ████▀
+                                    ██    ██
+                                    ▀▀    ▀▀
+
+build      : b8846-d104cf1b6
+model      : Bonsai-8B-Q1_0.gguf
+modalities : text
+
+available commands:
+  /exit or Ctrl+C     stop or exit
+  /regen              regenerate the last response
+  /clear              clear the chat history
+  /read <file>        add a text file
+  /glob <pattern>     add text files using globbing pattern
+
+[1m[32m
+> If today is Wednesday, what day will it be in 10 days?
+[0m
+| If today is **Wednesday**, then in **10 days** it will also be **Wednesday**.
+
+Here's why:  
+- A week has **7 days**.  
+- 10 days is **1 week (7 days) + 3 days**.  
+- So, starting from Wednesday, adding 7 days brings it back to Wednesday.  
+- Then adding the remaining 3 days also lands on Wednesday.
+
+**Answer: Wednesday**.
+[35m
+[ Prompt: 554.8 t/s | Generation: 94.1 t/s ]
+[0m
+Exiting...
+llama_memory_breakdown_print: | memory breakdown [MiB]          | total   free    self   model   context   compute    unaccounted |
+llama_memory_breakdown_print: |   - CUDA0 (RTX 4060 Laptop GPU) |  8187 = 5468 + (1608 =  1015 +     288 +     304) +        1111 |
+llama_memory_breakdown_print: |   - Host                        |                  103 =    83 +       0 +      20                |
+
+Script done on 2026-04-20 11:35:31+07:00 [COMMAND_EXIT_CODE="0"]
+---
+Expected: Saturday
+Category: reasoning

@@ -1,0 +1,3 @@
+---
+Expected: 37.8
+Category: math

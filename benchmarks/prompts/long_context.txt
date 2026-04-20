@@ -1,0 +1,31 @@
+You are a helpful AI assistant. Please provide a comprehensive answer.
+
+I'm going to provide you with a long technical document and then ask questions about it.
+
+--- BEGIN DOCUMENT ---
+
+The Transformer architecture, introduced in "Attention Is All You Need" (Vaswani et al., 2017), revolutionized natural language processing by replacing recurrent neural networks with self-attention mechanisms. The core innovation is the scaled dot-product attention: Attention(Q,K,V) = softmax(QK^T / sqrt(d_k))V, where Q, K, V are the query, key, and value matrices respectively, and d_k is the dimension of the keys.
+
+Multi-head attention allows the model to jointly attend to information from different representation subspaces: MultiHead(Q,K,V) = Concat(head_1,...,head_h)W^O, where each head_i = Attention(QW_i^Q, KW_i^K, VW_i^V).
+
+The original Transformer uses sinusoidal positional encodings: PE(pos,2i) = sin(pos/10000^(2i/d_model)) and PE(pos,2i+1) = cos(pos/10000^(2i/d_model)). Modern variants use rotary positional embeddings (RoPE) which encode position through rotation matrices applied to query and key vectors.
+
+Layer normalization is applied to each sub-layer: LayerNorm(x + Sublayer(x)). Pre-norm variants apply normalization before the sub-layer: x + Sublayer(LayerNorm(x)), which improves training stability.
+
+The feed-forward network in each layer consists of two linear transformations with a non-linearity: FFN(x) = max(0, xW_1 + b_1)W_2 + b_2. Modern variants use SwiGLU or GeGLU activations for improved performance.
+
+KV caching is critical for efficient autoregressive generation. During inference, the key and value tensors from previous tokens are cached to avoid recomputation. For a model with L layers, H heads, sequence length S, and head dimension D, the KV cache requires 2 * L * H * S * D * sizeof(element) bytes of memory. For a 7B parameter model with 32 layers, 32 heads, head dimension 128, and context length 8192, the FP16 KV cache requires approximately 8 GB — often exceeding the model weights themselves.
+
+KV cache quantization reduces this memory overhead by storing cached key and value tensors in lower precision formats. Common approaches include Q8_0 (8-bit with block-wise scaling), Q4_0 (4-bit uniform quantization), and more sophisticated methods like PolarQuant which uses Lloyd-Max optimal quantization for the polar decomposition of attention tensors.
+
+Mixture of Experts (MoE) models use sparse activation to scale model capacity without proportionally increasing computation. Each MoE layer contains multiple expert networks, and a gating mechanism selects a subset (typically top-2) for each token. This allows models like Mixtral-8x7B to have 46.7B total parameters but only activate ~13B per token.
+
+Flash Attention (Dao et al., 2022) optimizes attention computation by tiling the computation to fit in GPU SRAM, reducing memory reads/writes from O(N^2) to O(N). Flash Attention 2 further improves this with better work partitioning and reduced non-matmul FLOPs.
+
+--- END DOCUMENT ---
+
+Questions:
+1. What is the memory formula for KV cache and how much does a 7B model need at 8K context?
+2. How does PolarQuant differ from standard Q4_0 quantization?
+3. What is the computational complexity improvement of Flash Attention?
+4. Explain how MoE achieves parameter efficiency.

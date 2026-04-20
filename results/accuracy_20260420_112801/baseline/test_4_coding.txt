@@ -1,0 +1,3 @@
+---
+Expected: s[::-1]
+Category: coding

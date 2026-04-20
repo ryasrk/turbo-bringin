@@ -1,0 +1,32 @@
+═══════════════════════════════════════════════════════════
+  Tenrary-X: CLI Benchmark
+  Model: models/Bonsai-8B-Q1_0.gguf
+  Time:  Mon Apr 20 11:15:31 WIB 2026
+═══════════════════════════════════════════════════════════
+
+── GPU Info ──
+
+── Test 1: Reasoning (ctx=2048) ──
+ggml_cuda_init: found 1 CUDA devices (Total VRAM: 8187 MiB):
+  Device 0: NVIDIA GeForce RTX 4060 Laptop GPU, compute capability 8.9, VMM: yes, VRAM: 8187 MiB
+llama_memory_breakdown_print: | memory breakdown [MiB]          | total   free    self   model   context   compute    unaccounted |
+llama_memory_breakdown_print: |   - CUDA0 (RTX 4060 Laptop GPU) |  8187 = 5468 + (1608 =  1015 +     288 +     304) +        1111 |
+llama_memory_breakdown_print: |   - Host                        |                  103 =    83 +       0 +      20                |
+
+── Test 2: Coding (ctx=4096) ──
+ggml_cuda_init: found 1 CUDA devices (Total VRAM: 8187 MiB):
+  Device 0: NVIDIA GeForce RTX 4060 Laptop GPU, compute capability 8.9, VMM: yes, VRAM: 8187 MiB
+llama_memory_breakdown_print: | memory breakdown [MiB]          | total   free    self   model   context   compute    unaccounted |
+llama_memory_breakdown_print: |   - CUDA0 (RTX 4060 Laptop GPU) |  8187 = 5180 + (1896 =  1015 +     576 +     304) +        1111 |
+llama_memory_breakdown_print: |   - Host                        |                  107 =    83 +       0 +      24                |
+
+── Test 3: Knowledge (ctx=8192) ──
+ggml_cuda_init: found 1 CUDA devices (Total VRAM: 8187 MiB):
+  Device 0: NVIDIA GeForce RTX 4060 Laptop GPU, compute capability 8.9, VMM: yes, VRAM: 8187 MiB
+llama_memory_breakdown_print: | memory breakdown [MiB]          | total   free    self   model   context   compute    unaccounted |
+llama_memory_breakdown_print: |   - CUDA0 (RTX 4060 Laptop GPU) |  8187 = 4604 + (2472 =  1015 +    1152 +     304) +        1111 |
+llama_memory_breakdown_print: |   - Host                        |                  115 =    83 +       0 +      32                |
+
+═══════════════════════════════════════════════════════════
+  ✅ Results saved to results/cli_bench_20260420_111531.txt
+═══════════════════════════════════════════════════════════

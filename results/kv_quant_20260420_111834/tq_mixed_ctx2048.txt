@@ -1,0 +1,7 @@
+ggml_cuda_init: found 1 CUDA devices (Total VRAM: 8187 MiB):
+  Device 0: NVIDIA GeForce RTX 4060 Laptop GPU, compute capability 8.9, VMM: yes, VRAM: 8187 MiB
+llama_init_from_model: failed to initialize the context: quantized V cache was requested, but this requires Flash Attention
+llama_params_fit: encountered an error while trying to fit params to free device memory: failed to create llama_context from model
+llama_init_from_model: failed to initialize the context: quantized V cache was requested, but this requires Flash Attention
+common_init_result: failed to create context with model 'models/Bonsai-8B-Q1_0.gguf'
+common_init_from_params: failed to create context with model 'models/Bonsai-8B-Q1_0.gguf'

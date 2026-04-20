@@ -1,0 +1,11 @@
+═══════════════════════════════════════════════════════════
+  Tenrary-X: CLI Benchmark
+  Model: models/Bonsai-8B-Q1_0.gguf
+  Time:  Mon Apr 20 11:14:01 WIB 2026
+═══════════════════════════════════════════════════════════
+
+── GPU Info ──
+
+── Test 1: Reasoning (ctx=2048) ──
+ggml_cuda_init: found 1 CUDA devices (Total VRAM: 8187 MiB):
+  Device 0: NVIDIA GeForce RTX 4060 Laptop GPU, compute capability 8.9, VMM: yes, VRAM: 8187 MiB

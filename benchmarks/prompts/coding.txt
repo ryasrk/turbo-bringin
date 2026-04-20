@@ -1,0 +1,12 @@
+You are a helpful AI assistant skilled in programming.
+
+Write a complete Python implementation of a thread-safe LRU (Least Recently Used) cache with the following requirements:
+
+1. Support get(key) and put(key, value) operations
+2. Both operations should be O(1) time complexity
+3. Thread-safe using threading.Lock
+4. Configurable maximum capacity
+5. Include type hints
+6. Include unit tests using pytest
+
+Provide clean, production-ready code with proper error handling.
