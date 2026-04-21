@@ -195,32 +195,73 @@ function renderPartialCodeBlock(text, ctx) {
  * Render LaTeX expressions using KaTeX.
  * Handles both $$block$$ and $inline$ math.
  */
+
+// Reverse HTML-entity escaping inside math expressions so KaTeX receives
+// valid LaTeX (e.g. &#39; → ', &amp; → &, &lt; → <, &gt; → >).
+function decodeMathEntities(expr) {
+  return expr
+    .replace(/&#39;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
+}
+
+// Balance curly braces so stray `}` or unclosed `{` don't break KaTeX.
+function balanceBraces(expr) {
+  let depth = 0;
+  const chars = [];
+  for (let i = 0; i < expr.length; i++) {
+    const ch = expr[i];
+    // Skip escaped braces \{ and \}
+    if (ch === '\\' && (expr[i + 1] === '{' || expr[i + 1] === '}')) {
+      chars.push(ch, expr[i + 1]);
+      i++;
+      continue;
+    }
+    if (ch === '{') { depth++; chars.push(ch); }
+    else if (ch === '}') {
+      if (depth > 0) { depth--; chars.push(ch); }
+      // else skip the unmatched }
+    } else {
+      chars.push(ch);
+    }
+  }
+  // Close any unclosed {
+  while (depth-- > 0) chars.push('}');
+  return chars.join('');
+}
+
+function prepareMathExpr(expr) {
+  return balanceBraces(decodeMathEntities(expr.trim()));
+}
+
 export function renderMath(text, ctx) {
   if (typeof katex === 'undefined') return text;
 
   // Block math: $$…$$
   text = text.replace(/\$\$([\s\S]*?)\$\$/g, (_match, expr) => {
     try {
-      return sentinel(katex.renderToString(expr.trim(), {
+      return sentinel(katex.renderToString(prepareMathExpr(expr), {
         displayMode: true,
-        throwOnError: false,
+        throwOnError: true,
         output: 'htmlAndMathml',
       }), ctx);
     } catch {
-      return `<span class="math-error">${escapeHtml(expr)}</span>`;
+      return `<span class="math-error" title="Invalid LaTeX">${escapeHtml(expr.trim())}</span>`;
     }
   });
 
   // Inline math: $…$ (but not $$ and not inside words like price$10)
   text = text.replace(/(?<!\$|\w)\$(?!\$)((?:[^$\\]|\\.)+?)\$(?!\$|\d)/g, (_match, expr) => {
     try {
-      return sentinel(katex.renderToString(expr.trim(), {
+      return sentinel(katex.renderToString(prepareMathExpr(expr), {
         displayMode: false,
-        throwOnError: false,
+        throwOnError: true,
         output: 'htmlAndMathml',
       }), ctx);
     } catch {
-      return `<span class="math-error">${escapeHtml(expr)}</span>`;
+      return `<span class="math-error" title="Invalid LaTeX">${escapeHtml(expr.trim())}</span>`;
     }
   });
 

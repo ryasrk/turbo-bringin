@@ -103,35 +103,39 @@
 
         <!-- Input Area -->
         <footer class="input-area">
-          <div id="input-preview" class="input-preview" hidden></div>
           <div class="input-wrapper">
             <input type="file" id="file-upload-doc" hidden accept=".txt,.md,.json,.csv,.pdf,.py,.js,.ts" />
             <input type="file" id="file-upload-img" hidden accept="image/*" />
-            <div class="composer-tools">
-              <div class="plus-menu-container">
-                <button id="plus-btn" class="input-icon-btn" type="button" title="Tools" aria-label="Open tools" aria-haspopup="menu" aria-expanded="false" aria-controls="plus-menu">+</button>
-                <div class="plus-menu" id="plus-menu" role="menu" hidden>
-                  <button class="plus-menu-item" type="button" role="menuitem" data-action="upload-doc">Upload Document</button>
-                  <button class="plus-menu-item" type="button" role="menuitem" data-action="upload-image">Upload Image</button>
-                </div>
-              </div>
-              <button id="reasoning-toggle-btn" class="reasoning-toggle-btn" type="button" aria-pressed="false">Reasoning Off</button>
-            </div>
+            <div id="input-preview" class="input-preview" hidden></div>
             <textarea
               id="user-input"
-              placeholder="Send a message... (Shift+Enter for new line)"
+              placeholder="Send a message… (Shift+Enter for new line)"
               rows="1"
               autofocus
               aria-label="Message input"
             ></textarea>
-            <div class="composer-actions">
-              <button id="voice-btn" type="button" title="Voice input" aria-label="Voice input" class="input-icon-btn">🎙️</button>
-              <button id="stop-btn" type="button" title="Stop generation (Esc)" aria-label="Stop generation" hidden>⬛</button>
-              <button id="send-btn" type="button" title="Send (Enter)" aria-label="Send message" disabled>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
-                </svg>
-              </button>
+            <div class="input-toolbar">
+              <div class="composer-tools">
+                <div class="plus-menu-container">
+                  <button id="plus-btn" class="input-icon-btn" type="button" title="Tools" aria-label="Open tools" aria-haspopup="menu" aria-expanded="false" aria-controls="plus-menu">
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 1v10M1 6h10"/></svg>
+                  </button>
+                  <div class="plus-menu" id="plus-menu" role="menu" hidden>
+                    <button class="plus-menu-item" type="button" role="menuitem" data-action="upload-doc">Upload Document</button>
+                    <button class="plus-menu-item" type="button" role="menuitem" data-action="upload-image">Upload Image</button>
+                  </div>
+                </div>
+                <button id="reasoning-toggle-btn" class="reasoning-toggle-btn" type="button" aria-pressed="false">Reasoning Off</button>
+              </div>
+              <div class="composer-actions">
+                <button id="voice-btn" type="button" title="Voice input" aria-label="Voice input" class="input-icon-btn toolbar-icon-btn">🎙️</button>
+                <button id="stop-btn" type="button" title="Stop generation (Esc)" aria-label="Stop generation" class="send-btn stop-btn" hidden>
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><rect x="2" y="2" width="10" height="10" rx="2"/></svg>
+                </button>
+                <button id="send-btn" type="button" title="Send (Enter)" aria-label="Send message" class="send-btn" disabled>
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 13V3M4 7l4-4 4 4"/></svg>
+                </button>
+              </div>
             </div>
           </div>
           <div class="input-footer">
@@ -382,6 +386,62 @@
         <div class="modal-actions">
           <button id="delete-project-cancel" class="btn-modal-cancel" type="button">Cancel</button>
           <button id="delete-project-confirm" class="btn-danger" type="button">Delete</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Rename Conversation Modal -->
+    <div class="modal-overlay" id="rename-modal" hidden>
+      <div class="modal modal--compact" role="dialog" aria-modal="true" aria-labelledby="rename-modal-title" tabindex="-1">
+        <div class="modal-icon">✏️</div>
+        <h3 id="rename-modal-title">Rename Conversation</h3>
+        <div class="modal-body">
+          <div class="modal-field">
+            <label for="rename-modal-input">New Name</label>
+            <input type="text" id="rename-modal-input" class="modal-input" placeholder="Conversation name..." maxlength="100" autocomplete="off" spellcheck="false" />
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button id="rename-modal-cancel" class="btn-modal-cancel" type="button">Cancel</button>
+          <button id="rename-modal-confirm" class="btn-primary" type="button">Rename</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Move to Folder Modal -->
+    <div class="modal-overlay" id="move-folder-modal" hidden>
+      <div class="modal modal--compact" role="dialog" aria-modal="true" aria-labelledby="move-folder-title" tabindex="-1">
+        <div class="modal-icon">📁</div>
+        <h3 id="move-folder-title">Move to Folder</h3>
+        <div class="modal-body">
+          <div id="move-folder-list" class="move-folder-list"></div>
+          <div class="modal-field" style="margin-top:0.75rem">
+            <label for="move-folder-new-input">Or create a new folder</label>
+            <input type="text" id="move-folder-new-input" class="modal-input" placeholder="New folder name..." maxlength="60" autocomplete="off" spellcheck="false" />
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button id="move-folder-cancel" class="btn-modal-cancel" type="button">Cancel</button>
+          <button id="move-folder-confirm" class="btn-primary" type="button">Move</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Import Shared Chat Modal -->
+    <div class="modal-overlay" id="import-share-modal" hidden>
+      <div class="modal modal--compact" role="dialog" aria-modal="true" aria-labelledby="import-share-title" tabindex="-1">
+        <div class="modal-icon">📥</div>
+        <h3 id="import-share-title">Import Shared Chat</h3>
+        <p class="modal-desc">Paste the base64 share string below.</p>
+        <div class="modal-body">
+          <div class="modal-field">
+            <label for="import-share-input">Share String</label>
+            <textarea id="import-share-input" class="modal-input" rows="4" placeholder="Paste base64 string here..." autocomplete="off" spellcheck="false"></textarea>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button id="import-share-cancel" class="btn-modal-cancel" type="button">Cancel</button>
+          <button id="import-share-confirm" class="btn-primary" type="button">Import</button>
         </div>
       </div>
     </div>

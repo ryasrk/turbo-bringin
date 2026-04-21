@@ -821,68 +821,128 @@ summary:focus-visible {
 
 /* ── Input Area ─────────────────────────────────── */
 .input-area {
-  padding: 12px 20px 16px;
-  border-top: 1px solid var(--border);
+  padding: 10px 20px 14px;
   background: var(--bg-secondary);
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
+  position: relative;
+  z-index: 10;
 }
 
 .input-wrapper {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: flex-end;
-  gap: 8px;
+  display: flex;
+  flex-direction: column;
   background: var(--bg-primary);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 8px 12px;
-  transition: border-color 0.2s;
+  border-radius: 14px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  transition: border-color 0.2s, box-shadow 0.2s;
   width: 100%;
   max-width: 800px;
+  /* overflow must NOT be hidden — the plus-menu floats above */
+  position: relative;
 }
 
 .input-wrapper:focus-within {
   border-color: var(--accent);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.14), 0 0 0 1px var(--accent);
+}
+
+/* Textarea sits at top with padding */
+.input-wrapper textarea {
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  resize: none;
+  outline: none;
+  max-height: 150px;
+  min-height: 44px;
+  line-height: 1.6;
+  padding: 12px 14px 4px;
+}
+
+/* Bottom toolbar row */
+.input-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 8px 6px 10px;
+  border-top: 1px solid var(--border);
 }
 
 .composer-tools,
 .composer-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
-}
-
-.composer-tools {
-  grid-column: 1;
-}
-
-.composer-actions {
-  grid-column: 3;
+  gap: 4px;
 }
 
 .input-icon-btn {
-  background: var(--bg-tertiary);
-  color: var(--text-secondary);
+  background: transparent;
+  color: var(--text-muted);
   border: none;
-  border-radius: 50%;
-  width: 44px;
-  height: 44px;
+  border-radius: 8px;
+  width: 32px;
+  height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   flex-shrink: 0;
-  font-size: 18px;
-  font-weight: 300;
+  font-size: 15px;
   transition: color 0.2s, background 0.2s;
 }
 
 .input-icon-btn:hover {
   color: var(--text-primary);
-  background: var(--border);
+  background: var(--bg-tertiary);
+}
+
+/* Smaller icon button variant used in toolbar */
+.toolbar-icon-btn {
+  font-size: 14px;
+}
+
+/* Send / Stop button */
+.send-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  border: none;
+  background: var(--accent, #2f81f7);
+  color: #fff;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.2s, opacity 0.2s, transform 0.1s;
+}
+
+.send-btn:hover:not(:disabled) {
+  background: #1b6fe8;
+  transform: translateY(-1px);
+}
+
+.send-btn:disabled {
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+.send-btn.stop-btn {
+  background: rgba(248, 81, 73, 0.15);
+  color: #f85149;
+}
+
+.send-btn.stop-btn:hover {
+  background: rgba(248, 81, 73, 0.25);
+  transform: none;
 }
 
 .plus-menu-container {
@@ -899,7 +959,7 @@ summary:focus-visible {
   padding: 4px;
   min-width: 180px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-  z-index: 20;
+  z-index: 200;
 }
 
 .plus-menu[hidden] { display: none; }
@@ -924,35 +984,36 @@ summary:focus-visible {
 }
 
 .reasoning-toggle-btn {
-  background: var(--bg-tertiary);
-  color: var(--text-secondary);
+  background: transparent;
+  color: var(--text-muted);
   border: 1px solid transparent;
-  border-radius: 999px;
-  min-height: 44px;
-  padding: 0 14px;
+  border-radius: 8px;
+  height: 32px;
+  padding: 0 10px;
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
   flex-shrink: 0;
   transition: color 0.2s, background 0.2s, border-color 0.2s;
+  white-space: nowrap;
 }
 
 .reasoning-toggle-btn:hover {
   color: var(--text-primary);
-  background: var(--border);
+  background: var(--bg-tertiary);
 }
 
 .reasoning-toggle-btn.active {
-  color: var(--text-primary);
-  background: rgba(31, 111, 235, 0.16);
-  border-color: rgba(31, 111, 235, 0.4);
+  color: #58a6ff;
+  background: rgba(31, 111, 235, 0.12);
+  border-color: rgba(31, 111, 235, 0.35);
 }
 
 .attached-files {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
-  padding: 4px 0 0;
+  padding: 6px 14px 0;
   max-width: 800px;
   width: 100%;
 }
@@ -981,21 +1042,6 @@ summary:focus-visible {
 
 .attached-file .remove-file:hover {
   color: var(--danger);
-}
-
-.input-wrapper textarea {
-  grid-column: 2;
-  width: 100%;
-  background: transparent;
-  border: none;
-  color: var(--text-primary);
-  font-family: var(--font-sans);
-  font-size: 14px;
-  resize: none;
-  outline: none;
-  max-height: 150px;
-  min-height: 44px;
-  line-height: 1.5;
 }
 
 .input-wrapper textarea::placeholder {
@@ -1289,6 +1335,53 @@ summary:focus-visible {
 .btn-danger:hover {
   filter: brightness(1.1);
 }
+
+/* ── Move-to-folder list ────────────────────────── */
+.move-folder-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.move-folder-option {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.move-folder-option:hover {
+  background: var(--bg-tertiary);
+}
+
+.move-folder-option.active {
+  background: var(--accent-subtle, rgba(88,166,255,0.15));
+  border-color: var(--accent, #58a6ff);
+  color: var(--accent, #58a6ff);
+}
+
+/* ── Math Error Fallback ────────────────────────── */
+.math-error {
+  font-family: monospace;
+  font-size: 0.9em;
+  color: var(--text-muted, #8b949e);
+  background: var(--bg-code, rgba(110,118,129,0.1));
+  border: 1px dashed var(--border, #30363d);
+  border-radius: 3px;
+  padding: 1px 5px;
+  cursor: help;
+}
+
+
 
 /* ── Command Autocomplete ───────────────────────── */
 .command-autocomplete {
@@ -1614,23 +1707,9 @@ summary:focus-visible {
   margin-left: 6px;
 }
 
-/* ── Stop Button ────────────────────────────────── */
-#stop-btn {
-  background: var(--danger);
-  color: white;
-  border: none;
-  border-radius: 50%;
-  width: 44px;
-  height: 44px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 12px;
-  flex-shrink: 0;
-}
-
-#stop-btn:hover { opacity: 0.8; }
+/* ── Stop Button (now handled by .send-btn.stop-btn) ─────────── */
+/* Legacy #stop-btn override kept for specificity */
+#stop-btn { /* inherits .send-btn.stop-btn styles */ }
 
 /* ── Edit & Regen Buttons ───────────────────────── */
 .edit-msg-btn,
