@@ -192,11 +192,13 @@ export function addStreamingIndicator() {
   const div = document.createElement('div');
   div.className = 'message assistant streaming';
   div.id = 'streaming-msg';
+  const modeSelect = document.querySelector('#mode-select');
+  const modelLabel = modeSelect?.options[modeSelect.selectedIndex]?.text || state.mode || 'AI';
   div.innerHTML = `
     <div class="message-avatar">AI</div>
     <div class="message-body">
       <div class="message-meta">
-        <span class="message-role">Bonsai-8B</span>
+        <span class="message-role">${modelLabel}</span>
         <span class="message-time">${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
       </div>
       <div class="message-content"><div class="thinking-dots"><span></span><span></span><span></span></div></div>

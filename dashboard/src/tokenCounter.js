@@ -4,10 +4,11 @@
 const MODEL_VOCAB_SIZE = 151669;
 const MODEL_MAX_CONTEXT = 65536;
 const DEFAULT_MAX_CONTEXT = 16384;
+const SESSION_STATS_KEY = 'tenrary-x-session-stats';
 
 const CJK_RANGES = /[\u2E80-\u9FFF\uF900-\uFAFF\uFE30-\uFE4F\u{20000}-\u{2FA1F}]/u;
 
-let session = createEmptySession();
+let session = loadSessionStats();
 
 function createEmptySession() {
   return {
@@ -17,6 +18,38 @@ function createEmptySession() {
     messageCount: 0,
     startTime: Date.now(),
   };
+}
+
+function clampNumber(value) {
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 0 ? n : 0;
+}
+
+function saveSessionStats() {
+  try {
+    localStorage.setItem(SESSION_STATS_KEY, JSON.stringify(session));
+  } catch {
+    // Ignore storage failures (private mode/quota limits)
+  }
+}
+
+function loadSessionStats() {
+  try {
+    const raw = localStorage.getItem(SESSION_STATS_KEY);
+    if (!raw) return createEmptySession();
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return createEmptySession();
+
+    return {
+      totalPromptTokens: clampNumber(parsed.totalPromptTokens),
+      totalCompletionTokens: clampNumber(parsed.totalCompletionTokens),
+      totalTokens: clampNumber(parsed.totalTokens),
+      messageCount: clampNumber(parsed.messageCount),
+      startTime: clampNumber(parsed.startTime) || Date.now(),
+    };
+  } catch {
+    return createEmptySession();
+  }
 }
 
 /**
@@ -87,6 +120,7 @@ export function updateSessionStats(usage) {
   session.totalCompletionTokens += completion;
   session.totalTokens += prompt + completion;
   session.messageCount += 1;
+  saveSessionStats();
 }
 
 /**
@@ -94,6 +128,7 @@ export function updateSessionStats(usage) {
  */
 export function resetSessionStats() {
   session = createEmptySession();
+  saveSessionStats();
 }
 
 /**

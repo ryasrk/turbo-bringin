@@ -68,6 +68,7 @@ const tempValue = $('#temp-value');
 const enableThinkingInput = $('#enable-thinking');
 const maxTokensInput = $('#max-tokens');
 const ctxWindowInput = $('#ctx-window');
+const autoCompactInput = $('#auto-compact');
 const systemPromptInput = $('#system-prompt');
 const showThinkingInput = $('#show-thinking');
 const apiEndpointInput = $('#api-endpoint');
@@ -168,6 +169,9 @@ maxTokensInput.addEventListener('change', () => { state.settings.maxTokens = par
 ctxWindowInput.addEventListener('change', () => {
   state.settings.maxContext = parseInt(ctxWindowInput.value) || 65536;
   updateContextBar();
+});
+autoCompactInput?.addEventListener('change', () => {
+  state.settings.autoCompactEnabled = autoCompactInput.checked;
 });
 systemPromptInput.addEventListener('change', () => {
   state.settings.systemPrompt = systemPromptInput.value;

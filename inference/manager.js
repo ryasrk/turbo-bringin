@@ -24,13 +24,14 @@ const MAX_WS_PER_IP = 4;
 const MAX_STREAM_BUFFER_SIZE = 64 * 1024;
 const STREAM_REQUEST_COOLDOWN_MS = 250;
 const UPSTREAM_REQUEST_TIMEOUT_MS = 45_000;
+const MANUAL_PARALLEL_SLOTS = parseInt(process.env.PARALLEL_SLOTS, 10) || 0;
 
 const DASHBOARD_ORIGIN = process.env.DASHBOARD_ORIGIN || 'http://localhost:3000';
 const CONTROL_API_KEY = process.env.CONTROL_API_KEY || '';
 
 // ── Request Queue ──────────────────────────────────────────────
 const requestQueue = [];
-let isProcessing = false;
+let activeSlots = 0;
 const MAX_QUEUE_SIZE = 10;
 
 const MODES = {
@@ -48,6 +49,8 @@ let currentMode = null;
 let serverProcess = null;
 let isStarting = false;
 let activeWebSocketConnections = 0;
+let maxParallelSlots = 1;
+let slotStrategy = MANUAL_PARALLEL_SLOTS > 0 ? 'manual' : 'auto';
 const wsConnectionsByIp = new Map();
 
 const startedAt = Date.now();
@@ -55,6 +58,39 @@ let totalRequests = 0;
 
 // ── GPU Metrics Cache ──────────────────────────────────────────
 let gpuMetricsCache = { utilization: 0, memory_used_mb: 0, memory_total_mb: 0, temperature: 0 };
+
+function clampSlots(value) {
+  return Math.max(1, Math.min(MAX_WS_CONNECTIONS, Math.floor(value || 1)));
+}
+
+function resolveParallelSlots(mode) {
+  if (MANUAL_PARALLEL_SLOTS > 0) {
+    slotStrategy = 'manual';
+    return clampSlots(MANUAL_PARALLEL_SLOTS);
+  }
+
+  slotStrategy = 'auto';
+  const vramGb = (gpuMetricsCache.memory_total_mb || 0) / 1024;
+
+  if (vramGb <= 0) {
+    // Conservative defaults before first nvidia-smi sample arrives.
+    return mode === 'turboquant' ? 2 : 1;
+  }
+
+  if (mode === 'turboquant') {
+    if (vramGb >= 16) return 6;
+    if (vramGb >= 12) return 4;
+    if (vramGb >= 8) return 3;
+    if (vramGb >= 6) return 2;
+    return 1;
+  }
+
+  // Standard mode uses f16 KV cache, so keep slots conservative.
+  if (vramGb >= 24) return 4;
+  if (vramGb >= 16) return 3;
+  if (vramGb >= 10) return 2;
+  return 1;
+}
 
 function pollGpuMetrics() {
   execFile('nvidia-smi', [
@@ -236,61 +272,60 @@ function streamUpstreamToSink(params, sink) {
 
 // ── Request Queue Processing ───────────────────────────────────
 function processQueue() {
-  if (isProcessing || requestQueue.length === 0) return;
+  // Drain queue into available slots
+  while (activeSlots < maxParallelSlots && requestQueue.length > 0) {
+    const entry = requestQueue.shift();
 
-  const entry = requestQueue.shift();
-
-  // Update queue positions for remaining clients
-  for (let i = 0; i < requestQueue.length; i++) {
-    const queued = requestQueue[i];
-    if (queued.type === 'ws' && queued.ws.readyState === 1) {
-      wsSend(queued.ws, { type: 'queued', position: i + 1 });
-    } else if (queued.type === 'sse' && !queued.disconnected) {
-      queued.res.write(`data: ${JSON.stringify({ type: 'queued', position: i + 1 })}\n\n`);
+    // Update queue positions for remaining waiters
+    for (let i = 0; i < requestQueue.length; i++) {
+      const queued = requestQueue[i];
+      if (queued.type === 'ws' && queued.ws.readyState === 1) {
+        wsSend(queued.ws, { type: 'queued', position: i + 1 });
+      } else if (queued.type === 'sse' && !queued.disconnected) {
+        queued.res.write(`data: ${JSON.stringify({ type: 'queued', position: i + 1 })}\n\n`);
+      }
     }
-  }
 
-  // Skip if client disconnected while queued
-  if (entry.type === 'ws' && entry.ws.readyState !== 1) {
-    processQueue();
-    return;
-  }
-  if (entry.type === 'sse' && entry.disconnected) {
-    processQueue();
-    return;
-  }
+    // Skip disconnected clients
+    if (entry.type === 'ws' && entry.ws.readyState !== 1) continue;
+    if (entry.type === 'sse' && entry.disconnected) continue;
 
-  isProcessing = true;
+    activeSlots++;
+    entry.inFlight = true;
 
-  const onComplete = () => {
-    isProcessing = false;
-    processQueue();
-  };
+    const onComplete = () => {
+      if (entry.inFlight) {
+        entry.inFlight = false;
+        activeSlots = Math.max(0, activeSlots - 1);
+      }
+      processQueue();
+    };
 
-  if (entry.type === 'ws') {
-    const handle = streamUpstreamToSink(entry.params, {
-      onDelta: (delta) => wsSend(entry.ws, { type: 'delta', delta }),
-      onDone: () => { wsSend(entry.ws, { type: 'done' }); entry.cleanupRef = null; onComplete(); },
-      onError: (msg) => { wsSend(entry.ws, { type: 'error', message: msg }); entry.cleanupRef = null; onComplete(); },
-    });
-    entry.cleanupRef = handle.cleanup;
-  } else if (entry.type === 'sse') {
-    const handle = streamUpstreamToSink(entry.params, {
-      onDelta: (delta) => {
-        if (!entry.disconnected) entry.res.write(`data: ${JSON.stringify({ type: 'delta', delta })}\n\n`);
-      },
-      onDone: () => {
-        if (!entry.disconnected) { entry.res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`); entry.res.end(); }
-        entry.cleanupRef = null;
-        onComplete();
-      },
-      onError: (msg) => {
-        if (!entry.disconnected) { entry.res.write(`data: ${JSON.stringify({ type: 'error', message: msg })}\n\n`); entry.res.end(); }
-        entry.cleanupRef = null;
-        onComplete();
-      },
-    });
-    entry.cleanupRef = handle.cleanup;
+    if (entry.type === 'ws') {
+      const handle = streamUpstreamToSink(entry.params, {
+        onDelta: (delta) => wsSend(entry.ws, { type: 'delta', delta }),
+        onDone: () => { wsSend(entry.ws, { type: 'done' }); entry.cleanupRef = null; onComplete(); },
+        onError: (msg) => { wsSend(entry.ws, { type: 'error', message: msg }); entry.cleanupRef = null; onComplete(); },
+      });
+      entry.cleanupRef = handle.cleanup;
+    } else if (entry.type === 'sse') {
+      const handle = streamUpstreamToSink(entry.params, {
+        onDelta: (delta) => {
+          if (!entry.disconnected) entry.res.write(`data: ${JSON.stringify({ type: 'delta', delta })}\n\n`);
+        },
+        onDone: () => {
+          if (!entry.disconnected) { entry.res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`); entry.res.end(); }
+          entry.cleanupRef = null;
+          onComplete();
+        },
+        onError: (msg) => {
+          if (!entry.disconnected) { entry.res.write(`data: ${JSON.stringify({ type: 'error', message: msg })}\n\n`); entry.res.end(); }
+          entry.cleanupRef = null;
+          onComplete();
+        },
+      });
+      entry.cleanupRef = handle.cleanup;
+    }
   }
 }
 
@@ -347,7 +382,7 @@ websocketServer.on('connection', (ws) => {
     lastRequestAt = now;
     totalRequests += 1;
 
-    const entry = { type: 'ws', ws, params, cleanupRef: null };
+    const entry = { type: 'ws', ws, params, cleanupRef: null, inFlight: false };
     activeEntry = entry;
 
     if (!enqueueRequest(entry)) {
@@ -377,8 +412,12 @@ websocketServer.on('connection', (ws) => {
         requestQueue.splice(i, 1);
       }
     }
-    if (activeEntry?.cleanupRef) {
+    if (activeEntry?.inFlight && activeEntry.cleanupRef) {
       activeEntry.cleanupRef();
+      activeEntry.cleanupRef = null;
+      activeEntry.inFlight = false;
+      activeSlots = Math.max(0, activeSlots - 1);
+      processQueue();
     }
   };
 
@@ -421,16 +460,17 @@ function startServer(mode) {
     if (!MODES[mode]) return reject(new Error(`Unknown mode: ${mode}`));
 
     const config = MODES[mode];
+    maxParallelSlots = clampSlots(resolveParallelSlots(mode));
     const args = [
       '-m', MODEL,
       '-ngl', '99',
-      '-np', '1',
+      '-np', String(maxParallelSlots),
       '--host', '0.0.0.0',
       '--port', String(INFERENCE_PORT),
       ...config.args,
     ];
 
-    log(`Starting ${mode} mode: ${config.label}`);
+    log(`Starting ${mode} mode: ${config.label} (slots: ${maxParallelSlots}, strategy: ${slotStrategy})`);
 
     const proc = spawn(ENGINE, args, {
       cwd: PROJECT_DIR,
@@ -579,6 +619,9 @@ const controlServer = createServer(async (req, res) => {
       inference: {
         active_connections: activeWebSocketConnections,
         queue_depth: requestQueue.length,
+        active_slots: activeSlots,
+        max_parallel_slots: maxParallelSlots,
+        slot_strategy: slotStrategy,
         total_requests: totalRequests,
         uptime_seconds: Math.floor((Date.now() - startedAt) / 1000),
       },
@@ -641,14 +684,22 @@ const controlServer = createServer(async (req, res) => {
         'Access-Control-Allow-Origin': DASHBOARD_ORIGIN,
       });
 
-      const entry = { type: 'sse', res, params, disconnected: false, cleanupRef: null };
+      const entry = { type: 'sse', res, params, disconnected: false, cleanupRef: null, inFlight: false };
 
       req.on('close', () => {
         entry.disconnected = true;
         // Remove from queue if still pending
         const idx = requestQueue.indexOf(entry);
         if (idx !== -1) requestQueue.splice(idx, 1);
-        if (entry.cleanupRef) entry.cleanupRef();
+        if (entry.cleanupRef) {
+          entry.cleanupRef();
+          entry.cleanupRef = null;
+        }
+        if (entry.inFlight) {
+          entry.inFlight = false;
+          activeSlots = Math.max(0, activeSlots - 1);
+          processQueue();
+        }
       });
 
       if (!enqueueRequest(entry)) {

@@ -1824,6 +1824,43 @@ summary:focus-visible {
   40% { opacity: 1; transform: scale(1.1); }
 }
 
+/* ── Queue Status ────────────────────────────────── */
+.queue-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.queue-icon {
+  font-size: 14px;
+  animation: queuePulse 2s infinite ease-in-out;
+}
+
+.queue-label {
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.queue-badge {
+  background: rgba(88, 166, 255, 0.15);
+  color: var(--accent);
+  border-radius: 10px;
+  padding: 1px 8px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+@keyframes queuePulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
 /* ── Thinking Block (collapsible) ───────────────── */
 .thinking-block {
   margin-bottom: 12px;
@@ -1889,26 +1926,69 @@ summary:focus-visible {
 /* ── Export Modal ───────────────────────────────── */
 .export-options {
   display: flex;
+  flex-direction: column;
   gap: 12px;
   padding: 16px 0;
 }
 
+.export-section-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin: 0 0 6px;
+}
+
+.export-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
 .export-option {
-  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
   background: var(--bg-tertiary);
   border: 1px solid var(--border);
   color: var(--text-primary);
   border-radius: var(--radius-sm);
-  padding: 16px 12px;
+  padding: 10px 14px;
   font-size: 14px;
   cursor: pointer;
   text-align: center;
   transition: border-color 0.15s, background 0.15s;
+  text-align: left;
 }
 
 .export-option:hover {
   border-color: var(--accent);
   background: rgba(88, 166, 255, 0.05);
+}
+
+.export-opt-icon {
+  font-size: 20px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.export-opt-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.export-opt-body strong {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.export-opt-body small {
+  font-size: 11px;
+  color: var(--text-muted);
 }
 
 /* ── Footer Button ──────────────────────────────── */

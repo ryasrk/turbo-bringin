@@ -12,10 +12,10 @@ import {
 import { categorizeError } from './connectionManager.js';
 import { estimateTokens, updateSessionStats, recordUsage, getSessionStats, formatTokenCount } from './tokenCounter.js';
 import {
-  generateTitle, generateTitleViaLLM, getActiveConversation,
+  generateTitle, generateTitleViaLLM, generateTitleFallback, getActiveConversation,
 } from './conversationManager.js';
 import { executeCommand } from './pluginManager.js';
-import { escapeHtml, readFileAsDataURL, normalizeContent, autoResize } from './utils.js';
+import { escapeHtml, readFileAsDataURL, normalizeContent, autoResize, showToast } from './utils.js';
 import { updateContextBar, updateTokenInfo, updateSendButton } from './uiUpdaters.js';
 import { createMessageEl, addBranchNavToEl, regenerateLastResponse, addStreamingIndicator } from './messageRenderer.js';
 
@@ -33,10 +33,31 @@ function scrollToBottom() {
   chatContainer.scrollTop = chatContainer.scrollHeight;
 }
 
+function getQueuePosition(value) {
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 1 || n > 999) return null;
+  return n;
+}
+
+function extractTitleSource(messageLike) {
+  const raw = normalizeContent(messageLike || '');
+  if (!raw) return '';
+
+  return raw
+    .replace(/\[Attached[^\]]*\]/g, ' ')
+    .replace(/---[^\n]*---\n?/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 // connMgr is provided via init to avoid the circular dep with main.js
 let _connMgr = null;
 let _renderAttachedFiles = null;
 let _refreshSidebar = null;
+
+const CONTEXT_COMPACT_THRESHOLD = 0.8;
+const MIN_MESSAGES_FOR_COMPACTION = 8;
+const PRESERVE_RECENT_MESSAGES = 8;
 
 export function initChatApi({ connMgr, renderAttachedFiles, refreshSidebar }) {
   _connMgr = connMgr;
@@ -44,17 +65,83 @@ export function initChatApi({ connMgr, renderAttachedFiles, refreshSidebar }) {
   _refreshSidebar = refreshSidebar;
 }
 
+function estimateContextUsage(messages) {
+  const systemPromptTokens = state.settings.systemPrompt ? estimateTokens(state.settings.systemPrompt) : 0;
+  const messageTokens = messages.reduce((total, msg) => {
+    const content = normalizeContent(msg.content);
+    return total + estimateTokens(content) + 4;
+  }, 0);
+  return systemPromptTokens + messageTokens;
+}
+
+function buildCompactSummary(messages) {
+  const lines = [];
+  for (const msg of messages) {
+    const content = normalizeContent(msg.content).replace(/\s+/g, ' ').trim();
+    if (!content) continue;
+    const role = msg.role === 'user' ? 'User' : (msg.role === 'assistant' ? 'Assistant' : 'System');
+    lines.push(`- ${role}: ${content.slice(0, 220)}`);
+    if (lines.length >= 24) break;
+  }
+
+  if (lines.length === 0) {
+    return 'Previous conversation was compacted. No textual content was available in older turns.';
+  }
+
+  return [
+    'Conversation memory summary from older turns:',
+    ...lines,
+  ].join('\n');
+}
+
+function renderMessagesFromState() {
+  messagesEl.innerHTML = '';
+  for (const msg of state.messages) {
+    messagesEl.appendChild(createMessageEl(msg.role, msg.content, msg.stats, msg.images, msg));
+  }
+  scrollToBottom();
+}
+
+function compactConversationIfNeeded() {
+  if (state.settings.autoCompactEnabled === false) return false;
+  const maxContext = Number(state.settings.maxContext) || 65536;
+  const used = estimateContextUsage(state.messages);
+  if (used < Math.floor(maxContext * CONTEXT_COMPACT_THRESHOLD)) return false;
+  if (state.messages.length < MIN_MESSAGES_FOR_COMPACTION) return false;
+
+  const splitIndex = Math.max(2, state.messages.length - PRESERVE_RECENT_MESSAGES);
+  const olderMessages = state.messages.slice(0, splitIndex);
+  const recentMessages = state.messages.slice(splitIndex);
+  if (olderMessages.length === 0 || recentMessages.length === 0) return false;
+
+  const summaryMessage = {
+    role: 'system',
+    content: `[Compacted Memory]\n${buildCompactSummary(olderMessages)}\n[/Compacted Memory]`,
+    timestamp: Date.now(),
+    compacted: true,
+    compactedCount: olderMessages.length,
+  };
+
+  state.messages = [summaryMessage, ...recentMessages];
+  renderMessagesFromState();
+  showToast(`Context compacted: ${olderMessages.length} older messages summarized.`);
+  return true;
+}
+
 // ── Persistence ────────────────────────────────────────────────
 
 export function persistCurrentConversation() {
+  const firstUserMsg = state.messages.find((m) => m.role === 'user');
+  const titleSeed = extractTitleSource(firstUserMsg?.displayContent || firstUserMsg?.content) || 'Chat';
+
   if (!state.conversationId) {
-    const conv = createStoredConversation(generateTitle(state.messages[0]?.content || 'New Chat'));
+    const conv = createStoredConversation(generateTitleFallback(titleSeed || 'New Chat'));
     state.conversationId = conv.id;
     setActiveConversationId(conv.id);
   }
   const conv = {
     id: state.conversationId,
-    title: generateTitle(state.messages.find((m) => m.role === 'user')?.content || 'Chat'),
+    title: generateTitleFallback(titleSeed || 'Chat'),
     messages: state.messages,
     updatedAt: Date.now(),
     mode: state.mode,
@@ -96,6 +183,11 @@ export async function loadConversationById(id) {
 }
 
 export function startNewConversation() {
+  if (state.isStreaming) {
+    showToast('A response is still generating. Showing the ongoing chat.');
+    scrollToBottom();
+    return;
+  }
   state.messages = [];
   state.conversationId = null;
   state.folder = '';
@@ -178,17 +270,19 @@ export async function sendMessage(userText) {
     _renderAttachedFiles?.();
   }
 
-  const userMsg = { role: 'user', content: fullContent, timestamp: Date.now(), images: imageDataUrls };
+  const userMsg = { role: 'user', content: fullContent, displayContent: userText, timestamp: Date.now(), images: imageDataUrls };
   state.messages.push(userMsg);
   messagesEl.appendChild(createMessageEl('user', userText, null, imageDataUrls));
   scrollToBottom();
 
   if (state.messages.filter((m) => m.role === 'user').length === 1) {
-    const title = generateTitle(userText);
+    const title = await generateTitle(userText);
     const conv = getActiveConversation();
     if (conv) conv.title = title;
     state._pendingAutoTitle = userText;
   }
+
+  compactConversationIfNeeded();
 
   updateContextBar();
   await sendToAPI();
@@ -284,8 +378,11 @@ export async function sendToAPI() {
           if (aborted || settled) return;
           let msg;
           try { msg = JSON.parse(event.data); } catch { return; }
-          if (msg.type === 'queued' && Number.isFinite(msg.position)) {
-            contentEl.innerHTML = `<div class="thinking-dots"><span></span><span></span><span></span></div> <em class="text-muted">Queued (position ${msg.position})</em>`;
+          if (msg.type === 'queued') {
+            const queuePos = getQueuePosition(msg.position);
+            contentEl.innerHTML = queuePos
+              ? `<div class="queue-status"><span class="queue-icon">⏳</span><span class="queue-label">Queued</span><span class="queue-badge">#${queuePos}</span></div>`
+              : `<div class="queue-status"><span class="queue-icon">⏳</span><span class="queue-label">Queued</span></div>`;
           } else if (msg.type === 'delta' && msg.delta) {
             fullContent += msg.delta; tokenCount++; scheduleRender();
           } else if (msg.type === 'done') {
@@ -343,8 +440,11 @@ export async function sendToAPI() {
             if (!data) continue;
             let msg;
             try { msg = JSON.parse(data); } catch { continue; }
-            if (msg.type === 'queued' && Number.isFinite(msg.position)) {
-              contentEl.innerHTML = `<div class="thinking-dots"><span></span><span></span><span></span></div> <em class="text-muted">Queued (position ${msg.position})</em>`;
+            if (msg.type === 'queued') {
+              const queuePos = getQueuePosition(msg.position);
+              contentEl.innerHTML = queuePos
+                ? `<div class="queue-status"><span class="queue-icon">⏳</span><span class="queue-label">Queued</span><span class="queue-badge">#${queuePos}</span></div>`
+                : `<div class="queue-status"><span class="queue-icon">⏳</span><span class="queue-label">Queued</span></div>`;
             } else if (msg.type === 'delta' && msg.delta) {
               fullContent += msg.delta; tokenCount++; scheduleRender();
             } else if (msg.type === 'done') {

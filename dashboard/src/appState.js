@@ -24,6 +24,7 @@ export const state = {
     temperature: 0.7,
     maxTokens: 1024,
     maxContext: 65536,
+    autoCompactEnabled: true,
     systemPrompt: 'You are a helpful assistant.',
     apiEndpoint: '/v1/chat/completions',
     enableThinking: false,

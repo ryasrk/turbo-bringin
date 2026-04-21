@@ -18,6 +18,7 @@ const tempValue = $('#temp-value');
 const enableThinkingInput = $('#enable-thinking');
 const maxTokensInput = $('#max-tokens');
 const ctxWindowInput = $('#ctx-window');
+const autoCompactInput = $('#auto-compact');
 const systemPromptInput = $('#system-prompt');
 const showThinkingInput = $('#show-thinking');
 const apiEndpointInput = $('#api-endpoint');
@@ -110,6 +111,7 @@ export function applySettingsToUi() {
   updateReasoningControls();
   if (maxTokensInput) maxTokensInput.value = String(state.settings.maxTokens);
   if (ctxWindowInput) ctxWindowInput.value = String(state.settings.maxContext);
+  if (autoCompactInput) autoCompactInput.checked = state.settings.autoCompactEnabled !== false;
   if (systemPromptInput) systemPromptInput.value = state.settings.systemPrompt;
   if (showThinkingInput) showThinkingInput.checked = Boolean(state.settings.showThinking);
   if (apiEndpointInput) apiEndpointInput.value = state.settings.apiEndpoint;

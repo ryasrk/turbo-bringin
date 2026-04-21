@@ -283,7 +283,8 @@ export function sortConversations(conversations) {
 
 export function renderConversationItem(conversation, isActive) {
   const activeClass = isActive ? ' active' : '';
-  const title = escapeHtml(conversation.title);
+  const rawTitle = typeof conversation.title === 'string' ? conversation.title : '';
+  const title = escapeHtml(rawTitle || 'New Chat');
   const timeAgo = formatTimeAgo(conversation.updatedAt);
 
   return `<div class="conv-item${activeClass}" data-conv-id="${escapeHtml(conversation.id)}">
