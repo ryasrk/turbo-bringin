@@ -14,6 +14,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_DIR"
 
+if [[ -f ".env" ]]; then
+    set -a
+    # shellcheck disable=SC1091
+    source ".env"
+    set +a
+fi
+
 export PATH="/usr/local/cuda-12.8/bin:$PATH"
 
 INFERENCE_PORT="${INFERENCE_PORT:-18080}"

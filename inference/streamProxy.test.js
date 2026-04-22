@@ -25,6 +25,17 @@ test('buildChatCompletionPayload forwards chat template kwargs', () => {
   assert.deepEqual(payload.chat_template_kwargs, { enable_thinking: false });
 });
 
+test('buildChatCompletionPayload forwards provider-specific fields', () => {
+  const payload = JSON.parse(buildChatCompletionPayload({
+    messages: [{ role: 'user', content: 'hello' }],
+    model: 'claude-opus-4.6',
+    reasoning_effort: 'high',
+  }));
+
+  assert.equal(payload.model, 'claude-opus-4.6');
+  assert.equal(payload.reasoning_effort, 'high');
+});
+
 test('splitSseLines keeps incomplete tail in the buffer', () => {
   const result = splitSseLines('', 'data: {"choices":[{"delta":{"content":"Hel"}}]}\npartial');
 
@@ -35,7 +46,13 @@ test('splitSseLines keeps incomplete tail in the buffer', () => {
 test('parseSseLine extracts assistant deltas', () => {
   const event = parseSseLine('data: {"choices":[{"delta":{"content":"hello"}}]}');
 
-  assert.deepEqual(event, { type: 'delta', delta: 'hello' });
+  assert.deepEqual(event, { type: 'delta', channel: 'content', delta: 'hello' });
+});
+
+test('parseSseLine extracts reasoning deltas', () => {
+  const event = parseSseLine('data: {"choices":[{"delta":{"reasoning_content":"thinking"}}]}');
+
+  assert.deepEqual(event, { type: 'delta', channel: 'reasoning', delta: 'thinking' });
 });
 
 test('parseSseLine detects completion sentinel', () => {

@@ -18,6 +18,7 @@ import { executeCommand } from './pluginManager.js';
 import { escapeHtml, readFileAsDataURL, normalizeContent, autoResize, showToast } from './utils.js';
 import { updateContextBar, updateTokenInfo, updateSendButton } from './uiUpdaters.js';
 import { createMessageEl, addBranchNavToEl, regenerateLastResponse, addStreamingIndicator } from './messageRenderer.js';
+import { buildModeRequestPayload, resolveModeModel } from './providerConfig.js';
 
 const $ = (sel) => document.querySelector(sel);
 const messagesEl = $('#messages');
@@ -221,7 +222,9 @@ export async function sendMessage(userText) {
         if (cmdResult.action === 'clear') startNewConversation();
         if (cmdResult.action === 'stats') {
           const stats = getSessionStats();
-          const content = `**Session Statistics:**\n- Messages: ${state.messages.length}\n- Total tokens: ${formatTokenCount(stats.totalTokens)}\n- Mode: ${state.mode}`;
+          const activeModel = resolveModeModel(state.mode, state.settings.model);
+          const modeLabel = activeModel ? `${state.mode} (${activeModel})` : state.mode;
+          const content = `**Session Statistics:**\n- Messages: ${state.messages.length}\n- Total tokens: ${formatTokenCount(stats.totalTokens)}\n- Mode: ${modeLabel}`;
           welcomeEl.classList.add('hidden');
           messagesEl.appendChild(createMessageEl('assistant', content));
           scrollToBottom();
@@ -276,7 +279,12 @@ export async function sendMessage(userText) {
   scrollToBottom();
 
   if (state.messages.filter((m) => m.role === 'user').length === 1) {
-    const title = await generateTitle(userText);
+    const title = await generateTitle(userText, {
+      apiEndpoint: state.settings.apiEndpoint,
+      mode: state.mode,
+      enableThinking: state.settings.enableThinking,
+      selectedModel: state.settings.model,
+    });
     const conv = getActiveConversation();
     if (conv) conv.title = title;
     state._pendingAutoTitle = userText;
@@ -317,6 +325,7 @@ export async function sendToAPI() {
 
   const startTime = performance.now();
   let fullContent = '';
+  let reasoningContent = '';
   let tokenCount = 0;
 
   const statsInterval = setInterval(() => {
@@ -330,21 +339,27 @@ export async function sendToAPI() {
     const wsUrl = `${wsProto}//${location.host}/manager/ws/chat`;
 
     function renderStream(showCursor = true) {
-      const { thinking, content: mainContent } = stripThinking(fullContent);
+      const streamedContent = reasoningContent
+        ? `<think>${reasoningContent}</think>\n\n${fullContent}`
+        : fullContent;
+      const { thinking, content: mainContent } = stripThinking(streamedContent);
       let html = '';
-      if (thinking && state.settings.showThinking) html += renderThinkingBlock(fullContent);
+      if (thinking && state.settings.showThinking) html += renderThinkingBlock(streamedContent);
       html += renderMarkdown(mainContent || fullContent);
       if (showCursor) html += '<span class="stream-cursor"></span>';
       contentEl.innerHTML = html;
       scrollToBottom();
     }
 
-    const requestPayload = {
+    const requestPayload = buildModeRequestPayload(state.mode, {
       messages: apiMessages,
       max_tokens: state.settings.maxTokens,
       temperature: state.settings.temperature,
       chat_template_kwargs: { enable_thinking: state.settings.enableThinking },
-    };
+    }, {
+      enableThinking: state.settings.enableThinking,
+      selectedModel: state.settings.model,
+    });
 
     let useSSE = false;
     try {
@@ -384,7 +399,10 @@ export async function sendToAPI() {
               ? `<div class="queue-status"><span class="queue-icon">⏳</span><span class="queue-label">Queued</span><span class="queue-badge">#${queuePos}</span></div>`
               : `<div class="queue-status"><span class="queue-icon">⏳</span><span class="queue-label">Queued</span></div>`;
           } else if (msg.type === 'delta' && msg.delta) {
-            fullContent += msg.delta; tokenCount++; scheduleRender();
+            if (msg.channel === 'reasoning') reasoningContent += msg.delta;
+            else fullContent += msg.delta;
+            tokenCount++;
+            scheduleRender();
           } else if (msg.type === 'done') {
             renderStream(false); resolveOnce(); ws.close(1000, 'complete');
           } else if (msg.type === 'error') {
@@ -446,7 +464,10 @@ export async function sendToAPI() {
                 ? `<div class="queue-status"><span class="queue-icon">⏳</span><span class="queue-label">Queued</span><span class="queue-badge">#${queuePos}</span></div>`
                 : `<div class="queue-status"><span class="queue-icon">⏳</span><span class="queue-label">Queued</span></div>`;
             } else if (msg.type === 'delta' && msg.delta) {
-              fullContent += msg.delta; tokenCount++; scheduleRender();
+              if (msg.channel === 'reasoning') reasoningContent += msg.delta;
+              else fullContent += msg.delta;
+              tokenCount++;
+              scheduleRender();
             } else if (msg.type === 'done') {
               renderStream(false); break;
             } else if (msg.type === 'error') {
@@ -466,7 +487,10 @@ export async function sendToAPI() {
     streamEl.classList.remove('streaming');
     streamEl.id = '';
 
-    const statsHtml = `${tokenCount} tokens • ${elapsed.toFixed(2)}s • ${tps} t/s • ${state.mode}`;
+    const activeModel = resolveModeModel(state.mode, state.settings.model);
+    const statsHtml = activeModel
+      ? `${tokenCount} tokens • ${elapsed.toFixed(2)}s • ${tps} t/s • ${state.mode} • ${activeModel}`
+      : `${tokenCount} tokens • ${elapsed.toFixed(2)}s • ${tps} t/s • ${state.mode}`;
     const statsEl = document.createElement('div');
     statsEl.className = 'message-stats';
     statsEl.textContent = statsHtml;

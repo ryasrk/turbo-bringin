@@ -1,4 +1,12 @@
-export function buildChatCompletionPayload({ messages, max_tokens, temperature, chat_template_kwargs, reasoning_format }) {
+export function buildChatCompletionPayload({
+  messages,
+  max_tokens,
+  temperature,
+  chat_template_kwargs,
+  reasoning_format,
+  model,
+  reasoning_effort,
+}) {
   const MAX_TOKENS_CAP = 8192;
   const payload = {
     messages: Array.isArray(messages) ? messages : [],
@@ -13,6 +21,14 @@ export function buildChatCompletionPayload({ messages, max_tokens, temperature, 
 
   if (typeof reasoning_format === 'string' && reasoning_format) {
     payload.reasoning_format = reasoning_format;
+  }
+
+  if (typeof model === 'string' && model) {
+    payload.model = model;
+  }
+
+  if (typeof reasoning_effort === 'string' && reasoning_effort) {
+    payload.reasoning_effort = reasoning_effort;
   }
 
   return JSON.stringify(payload);
@@ -44,13 +60,23 @@ export function parseSseLine(line) {
 
   try {
     const payload = JSON.parse(data);
-    const delta = payload.choices?.[0]?.delta?.content;
+    const deltaPayload = payload.choices?.[0]?.delta;
+    const contentDelta = deltaPayload?.content;
+    const reasoningDelta = deltaPayload?.reasoning_content;
 
-    if (!delta) {
+    if (typeof contentDelta === 'string' && contentDelta) {
+      return { type: 'delta', channel: 'content', delta: contentDelta };
+    }
+
+    if (typeof reasoningDelta === 'string' && reasoningDelta) {
+      return { type: 'delta', channel: 'reasoning', delta: reasoningDelta };
+    }
+
+    if (!deltaPayload) {
       return { type: 'meta', payload };
     }
 
-    return { type: 'delta', delta };
+    return { type: 'meta', payload };
   } catch (error) {
     return {
       type: 'invalid',

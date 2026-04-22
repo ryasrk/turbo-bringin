@@ -232,6 +232,7 @@ export function getAnalyticsSummary() {
     byMode: {
       standard: data.filter(d => d.mode === 'standard').reduce((s, d) => s + d.total, 0),
       turboquant: data.filter(d => d.mode === 'turboquant').reduce((s, d) => s + d.total, 0),
+      enowxai: data.filter(d => d.mode === 'enowxai').reduce((s, d) => s + d.total, 0),
     },
   };
 }

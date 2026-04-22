@@ -29,6 +29,8 @@ import { initShortcuts, getShortcutsList } from './keyboardShortcuts.js';
 import { listConversations, getActiveConversationId } from './chatStorage.js';
 import { searchConversations, renderConversationList } from './conversationManager.js';
 import { formatTokenCount, getAnalyticsSummary } from './tokenCounter.js';
+import { resolveModeModel } from './providerConfig.js';
+import { showToast } from './utils.js';
 
 // Side-effect imports — register their own DOM event listeners on load
 import './playgroundManager.js';
@@ -72,6 +74,7 @@ const autoCompactInput = $('#auto-compact');
 const systemPromptInput = $('#system-prompt');
 const showThinkingInput = $('#show-thinking');
 const apiEndpointInput = $('#api-endpoint');
+const providerModelInput = $('#provider-model');
 const userLanguageSelect = $('#user-language');
 const userTimezoneSelect = $('#user-timezone');
 const plusBtn = $('#plus-btn');
@@ -101,6 +104,52 @@ initSidebarManager({ loadConversationById, startNewConversation, processImportSh
 initExportManager({ loadConversationById });
 initSearchManager({ sendMessage, updateSendButton });
 
+async function showEnowxModelList() {
+  try {
+    const response = await fetch('/v1/models', { signal: AbortSignal.timeout(15000) });
+    if (!response.ok) {
+      throw new Error('Failed to load enowxai models.');
+    }
+
+    const data = await response.json();
+    const models = Array.isArray(data?.data)
+      ? data.data
+      : Array.isArray(data?.models)
+        ? data.models
+        : [];
+
+    if (models.length === 0) {
+      showToast('EnowxAI mode enabled, but no models were returned.', 'error');
+      return;
+    }
+
+    if (providerModelInput) {
+      const previousValue = state.settings.model || providerModelInput.value || '';
+      providerModelInput.innerHTML = '<option value="">Auto / Default</option>';
+
+      models.forEach((model) => {
+        const option = document.createElement('option');
+        option.value = model.id;
+        option.textContent = model.id;
+        providerModelInput.appendChild(option);
+      });
+
+      const defaultModel = resolveModeModel('enowxai', '');
+      const nextValue = models.some((model) => model.id === previousValue)
+        ? previousValue
+        : models.some((model) => model.id === defaultModel)
+          ? defaultModel
+          : (models[0]?.id || '');
+      state.settings.model = nextValue;
+      providerModelInput.value = nextValue;
+    }
+
+    showToast(`Loaded ${models.length} EnowxAI models into Provider Model settings.`, 'success');
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : 'Failed to load enowxai models.', 'error');
+  }
+}
+
 // ── Mode Select ────────────────────────────────────────────────
 modeSelect.addEventListener('change', async () => {
   const newMode = modeSelect.value;
@@ -113,6 +162,9 @@ modeSelect.addEventListener('change', async () => {
       state.mode = newMode;
       state.settings.apiEndpoint = '/v1/chat/completions';
       connMgr.setState('connected');
+      if (newMode === 'enowxai') {
+        await showEnowxModelList();
+      }
     } else {
       connMgr.setState('disconnected');
     }
@@ -179,6 +231,7 @@ systemPromptInput.addEventListener('change', () => {
 });
 showThinkingInput.addEventListener('change', () => { state.settings.showThinking = showThinkingInput.checked; });
 apiEndpointInput.addEventListener('change', () => { state.settings.apiEndpoint = apiEndpointInput.value; });
+providerModelInput?.addEventListener('change', () => { state.settings.model = providerModelInput.value; });
 userLanguageSelect.addEventListener('change', () => { state.settings.language = userLanguageSelect.value; updateLocalePreview(); });
 userTimezoneSelect.addEventListener('change', () => { state.settings.timezone = userTimezoneSelect.value; updateLocalePreview(); });
 
@@ -208,7 +261,7 @@ analyticsBtn.addEventListener('click', () => {
     <div class="analytics-card"><div class="label">Today</div><div class="value">${formatTokenCount(summary.today.total)}</div><div class="sub">${summary.today.count} requests</div></div>
     <div class="analytics-card"><div class="label">This Week</div><div class="value">${formatTokenCount(summary.week.total)}</div><div class="sub">${summary.week.count} requests</div></div>
     <div class="analytics-card"><div class="label">All Time</div><div class="value">${formatTokenCount(summary.allTime.total)}</div><div class="sub">${summary.allTime.count} requests</div></div>
-    <div class="analytics-card"><div class="label">By Mode</div><div class="value">&nbsp;</div><div class="sub">TurboQuant: ${formatTokenCount(summary.byMode.turboquant)}<br>Standard: ${formatTokenCount(summary.byMode.standard)}</div></div>
+    <div class="analytics-card"><div class="label">By Mode</div><div class="value">&nbsp;</div><div class="sub">TurboQuant: ${formatTokenCount(summary.byMode.turboquant)}<br>Standard: ${formatTokenCount(summary.byMode.standard)}<br>EnowxAI: ${formatTokenCount(summary.byMode.enowxai)}</div></div>
   `;
   openModal(analyticsModal, analyticsBtn);
 });

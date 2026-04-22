@@ -74,11 +74,11 @@ registerPlugin('builtins', {
       },
     },
     mode: {
-      description: 'Switch inference mode (standard/turboquant)',
+      description: 'Switch inference mode (standard/turboquant/enowxai)',
       execute: (args) => {
         const mode = args.trim();
-        if (!['standard', 'turboquant'].includes(mode)) {
-          return { type: 'system', content: 'Usage: `/mode standard` or `/mode turboquant`' };
+        if (!['standard', 'turboquant', 'enowxai'].includes(mode)) {
+          return { type: 'system', content: 'Usage: `/mode standard`, `/mode turboquant`, or `/mode enowxai`' };
         }
         return { type: 'action', action: 'switch-mode', data: mode };
       },

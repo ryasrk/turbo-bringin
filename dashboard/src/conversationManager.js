@@ -231,12 +231,13 @@ export async function generateTitle(firstMessage, options = {}) {
     : '/v1/chat/completions';
 
   try {
+    const { buildModeRequestPayload } = await import('./providerConfig.js');
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
+      body: JSON.stringify(buildModeRequestPayload(options.mode, {
         messages: [
           {
             role: 'system',
@@ -250,7 +251,10 @@ export async function generateTitle(firstMessage, options = {}) {
         max_tokens: 20,
         temperature: 0.2,
         stream: false,
-      }),
+      }, {
+        enableThinking: options.enableThinking,
+        selectedModel: options.selectedModel,
+      })),
       signal: options.signal,
     });
 

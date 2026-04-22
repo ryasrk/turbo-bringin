@@ -64,6 +64,7 @@
           <select id="mode-select">
             <option value="turboquant">TurboQuant</option>
             <option value="standard">Standard (f16)</option>
+            <option value="enowxai">EnowxAI</option>
           </select>
           <button id="theme-toggle" class="header-btn" type="button" title="Toggle theme" aria-label="Toggle theme">🌙</button>
           <button id="settings-btn" title="Settings">⚙</button>
@@ -251,6 +252,12 @@
           </div>
 
           <div class="settings-panel" data-panel="model" id="panel-model" role="tabpanel" aria-labelledby="tab-model" hidden>
+            <div class="setting-group">
+              <label for="provider-model">Provider Model</label>
+              <select id="provider-model">
+                <option value="">Auto / Default</option>
+              </select>
+            </div>
             <div class="setting-group">
               <label for="temp-slider">Temperature <span id="temp-value" class="setting-value">0.7</span></label>
               <input type="range" id="temp-slider" min="0" max="2" step="0.1" value="0.7" />

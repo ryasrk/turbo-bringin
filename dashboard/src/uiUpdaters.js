@@ -22,6 +22,7 @@ const autoCompactInput = $('#auto-compact');
 const systemPromptInput = $('#system-prompt');
 const showThinkingInput = $('#show-thinking');
 const apiEndpointInput = $('#api-endpoint');
+const providerModelInput = $('#provider-model');
 const userLanguageSelect = $('#user-language');
 const userTimezoneSelect = $('#user-timezone');
 const localePreview = $('#locale-preview');
@@ -115,6 +116,7 @@ export function applySettingsToUi() {
   if (systemPromptInput) systemPromptInput.value = state.settings.systemPrompt;
   if (showThinkingInput) showThinkingInput.checked = Boolean(state.settings.showThinking);
   if (apiEndpointInput) apiEndpointInput.value = state.settings.apiEndpoint;
+  if (providerModelInput) providerModelInput.value = state.settings.model || '';
   if (userLanguageSelect) userLanguageSelect.value = state.settings.language;
   if (userTimezoneSelect) userTimezoneSelect.value = state.settings.timezone;
   updateLocalePreview();

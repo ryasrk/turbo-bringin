@@ -2,19 +2,20 @@ import { defineConfig, loadEnv } from 'vite'
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
-  const inferencePort = env.INFERENCE_PORT || process.env.INFERENCE_PORT || '18080'
+  const dashboardPort = env.DASHBOARD_PORT || process.env.DASHBOARD_PORT || '3000'
   const controlPort = env.CONTROL_PORT || process.env.CONTROL_PORT || '3002'
 
   return {
+    envDir: '..',
     server: {
-      port: 3000,
+      port: Number(dashboardPort),
       proxy: {
         '/v1': {
-          target: `http://localhost:${inferencePort}`,
+          target: `http://localhost:${controlPort}`,
           changeOrigin: true,
         },
         '/health': {
-          target: `http://localhost:${inferencePort}`,
+          target: `http://localhost:${controlPort}`,
           changeOrigin: true,
         },
         '/manager': {

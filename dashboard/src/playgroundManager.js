@@ -2,7 +2,9 @@
  * Playground Manager — isolated prompt playground with history.
  */
 
-import { renderMarkdown } from './markdownRenderer.js';
+import { renderMarkdown, renderThinkingBlock, stripThinking } from './markdownRenderer.js';
+import { state } from './appState.js';
+import { buildModeRequestPayload } from './providerConfig.js';
 import { escapeHtml } from './utils.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -51,13 +53,27 @@ async function runPlayground() {
     const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${wsProto}//${location.host}/manager/ws/chat`;
 
-    const requestPayload = {
+    const requestPayload = buildModeRequestPayload(state.mode, {
       messages: [{ role: 'user', content: prompt }],
       max_tokens: parseInt(pgMaxTokens?.value) || 256,
       temperature: parseFloat(pgTemp?.value) || 0.7,
-    };
+    }, {
+      enableThinking: state.settings.enableThinking,
+      selectedModel: state.settings.model,
+    });
 
     let fullContent = '';
+    let reasoningContent = '';
+    const renderOutput = () => {
+      const streamedContent = reasoningContent
+        ? `<think>${reasoningContent}</think>\n\n${fullContent}`
+        : fullContent;
+      const { thinking, content } = stripThinking(streamedContent);
+      let html = '';
+      if (thinking) html += renderThinkingBlock(streamedContent);
+      html += renderMarkdown(content || fullContent);
+      playgroundOutput.innerHTML = html;
+    };
     await new Promise((resolve, reject) => {
       const ws = new WebSocket(wsUrl);
       let settled = false;
@@ -71,8 +87,9 @@ async function runPlayground() {
         if (msg.type === 'queued' && Number.isFinite(msg.position)) {
           playgroundOutput.innerHTML = `<div class="thinking-dots"><span></span><span></span><span></span></div> <em class="text-muted">Queued (position ${msg.position})</em>`;
         } else if (msg.type === 'delta' && msg.delta) {
-          fullContent += msg.delta;
-          playgroundOutput.innerHTML = renderMarkdown(fullContent);
+          if (msg.channel === 'reasoning') reasoningContent += msg.delta;
+          else fullContent += msg.delta;
+          renderOutput();
         } else if (msg.type === 'done') {
           settled = true; ws.close(1000, 'complete'); resolve();
         } else if (msg.type === 'error') {
@@ -89,7 +106,7 @@ async function runPlayground() {
       ws.onerror = () => { if (!settled) reject(new Error('WebSocket connection failed.')); };
     });
 
-    playgroundOutput.innerHTML = renderMarkdown(fullContent);
+    renderOutput();
     playgroundHistoryData.unshift({
       prompt, output: fullContent,
       temp: pgTemp?.value ?? '0.7',

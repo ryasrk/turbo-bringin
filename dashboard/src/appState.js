@@ -27,6 +27,7 @@ export const state = {
     autoCompactEnabled: true,
     systemPrompt: 'You are a helpful assistant.',
     apiEndpoint: '/v1/chat/completions',
+    model: '',
     enableThinking: false,
     showThinking: true,
     language: 'auto',

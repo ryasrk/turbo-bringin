@@ -8,8 +8,10 @@ import { spawn, execFile } from 'child_process';
 import { createServer, request as httpRequest } from 'http';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { createClient } from 'redis';
 import { WebSocketServer } from 'ws';
 
+import { buildCacheKey, CACHE_TTLS, RequestCache, shouldCacheRequest } from './requestCache.js';
 import { buildChatCompletionPayload, parseSseLine, splitSseLines } from './streamProxy.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -28,6 +30,14 @@ const MANUAL_PARALLEL_SLOTS = parseInt(process.env.PARALLEL_SLOTS, 10) || 0;
 
 const DASHBOARD_ORIGIN = process.env.DASHBOARD_ORIGIN || 'http://localhost:3000';
 const CONTROL_API_KEY = process.env.CONTROL_API_KEY || '';
+const ENOWXAI_BASE_URL = process.env.ENOWXAI_BASE_URL || '';
+const ENOWXAI_API_KEY = process.env.ENOWXAI_API_KEY || '';
+const ENOWXAI_MODEL = process.env.ENOWXAI_MODEL || '';
+const REDIS_URL = process.env.REDIS_URL || '';
+const MAX_PROXY_BODY_SIZE = 512 * 1024;
+const MAX_BUFFERED_PROXY_RESPONSE_SIZE = 2 * 1024 * 1024;
+const SUPPORTED_PROXY_GET_PATHS = new Set(['/v1/models']);
+const SUPPORTED_PROXY_POST_PATHS = new Set(['/v1/chat/completions', '/v1/responses', '/v1/messages']);
 
 // ── Request Queue ──────────────────────────────────────────────
 const requestQueue = [];
@@ -36,12 +46,21 @@ const MAX_QUEUE_SIZE = 10;
 
 const MODES = {
   standard: {
+    type: 'local',
     label: 'Standard (f16 KV)',
     args: ['--cache-type-k', 'f16', '--cache-type-v', 'f16', '-fa', 'off', '-c', '8192'],
   },
   turboquant: {
+    type: 'local',
     label: 'TurboQuant (q4_0 + FA)',
     args: ['--cache-type-k', 'q4_0', '--cache-type-v', 'q4_0', '-fa', 'on', '-c', '65536'],
+  },
+  enowxai: {
+    type: 'provider',
+    label: 'EnowxAI (Claude Opus 4.6)',
+    baseURL: ENOWXAI_BASE_URL,
+    apiKey: ENOWXAI_API_KEY,
+    model: ENOWXAI_MODEL,
   },
 };
 
@@ -55,6 +74,7 @@ const wsConnectionsByIp = new Map();
 
 const startedAt = Date.now();
 let totalRequests = 0;
+const requestCache = new RequestCache();
 
 // ── GPU Metrics Cache ──────────────────────────────────────────
 let gpuMetricsCache = { utilization: 0, memory_used_mb: 0, memory_total_mb: 0, temperature: 0 };
@@ -120,6 +140,33 @@ function log(msg) {
   console.log(`[${ts}] ${msg}`);
 }
 
+async function initRedisCache() {
+  if (!REDIS_URL) {
+    log('Redis cache disabled (REDIS_URL not set). Using memory cache.');
+    return;
+  }
+
+  const client = createClient({ url: REDIS_URL });
+  client.on('error', (error) => {
+    if (client.isReady) {
+      log(`Redis cache error: ${error.message}`);
+    }
+  });
+
+  try {
+    await client.connect();
+    requestCache.redisClient = client;
+    log(`Redis cache connected: ${REDIS_URL}`);
+  } catch (error) {
+    log(`Redis cache unavailable, falling back to memory cache: ${error.message}`);
+    try {
+      await client.disconnect();
+    } catch {}
+  }
+}
+
+void initRedisCache();
+
 function wsSend(ws, payload) {
   if (ws.readyState === 1) {
     ws.send(JSON.stringify(payload));
@@ -127,6 +174,33 @@ function wsSend(ws, payload) {
 }
 
 function requestInference(pathname, { method = 'GET', body = null } = {}) {
+  const modeConfig = currentMode ? MODES[currentMode] : null;
+
+  if (modeConfig?.type === 'provider') {
+    const baseUrl = new URL(modeConfig.baseURL);
+    const basePath = baseUrl.pathname.replace(/\/$/, '');
+    const upstreamPath = pathname.startsWith(basePath)
+      ? pathname
+      : `${basePath}${pathname.startsWith('/') ? pathname.replace(/^\/v1/, '') : pathname}`;
+    const headers = body ? {
+      'Content-Type': 'application/json',
+      'Content-Length': Buffer.byteLength(body),
+    } : {};
+
+    if (modeConfig.apiKey) {
+      headers.Authorization = `Bearer ${modeConfig.apiKey}`;
+    }
+
+    return httpRequest({
+      protocol: baseUrl.protocol,
+      hostname: baseUrl.hostname,
+      port: baseUrl.port || (baseUrl.protocol === 'https:' ? 443 : 80),
+      path: upstreamPath,
+      method,
+      headers,
+    });
+  }
+
   return httpRequest({
     hostname: '127.0.0.1',
     port: INFERENCE_PORT,
@@ -139,14 +213,158 @@ function requestInference(pathname, { method = 'GET', body = null } = {}) {
   });
 }
 
+function isRemoteProviderMode(mode) {
+  return Boolean(mode && MODES[mode]?.type === 'provider');
+}
+
+function isInferenceReady() {
+  return Boolean(currentMode) && !isStarting && (isRemoteProviderMode(currentMode) || serverProcess);
+}
+
+function readRequestBody(req, sizeLimit = MAX_PROXY_BODY_SIZE) {
+  return new Promise((resolve, reject) => {
+    let rawBody = '';
+
+    req.on('data', (chunk) => {
+      rawBody += chunk;
+      if (rawBody.length > sizeLimit) {
+        reject(new Error('Payload too large'));
+        req.destroy();
+      }
+    });
+
+    req.on('end', () => resolve(rawBody));
+    req.on('error', reject);
+  });
+}
+
+function writeProxyHeaders(res, upstreamResponse) {
+  const headers = { ...(upstreamResponse.headers || {}) };
+  delete headers.connection;
+  delete headers['transfer-encoding'];
+  res.writeHead(upstreamResponse.statusCode ?? 502, headers);
+}
+
+function normalizeProxyHeaders(headers = {}) {
+  const nextHeaders = { ...headers };
+  delete nextHeaders.connection;
+  delete nextHeaders['transfer-encoding'];
+  return nextHeaders;
+}
+
+function sendBufferedProxyResponse(res, response) {
+  res.writeHead(response.statusCode ?? 502, normalizeProxyHeaders(response.headers));
+  res.end(response.body);
+}
+
+function isCacheableProviderRequest(pathname, method, body) {
+  return isRemoteProviderMode(currentMode) && shouldCacheRequest(pathname, method, body);
+}
+
+function fetchBufferedInferenceResponse(pathname, { method = 'GET', body = null } = {}) {
+  return new Promise((resolve, reject) => {
+    const upstreamRequest = requestInference(pathname, { method, body });
+
+    upstreamRequest.setTimeout(UPSTREAM_REQUEST_TIMEOUT_MS, () => {
+      upstreamRequest.destroy(new Error('Proxy request timeout'));
+    });
+
+    upstreamRequest.on('response', (upstreamResponse) => {
+      const chunks = [];
+      let totalLength = 0;
+
+      upstreamResponse.on('data', (chunk) => {
+        totalLength += chunk.length;
+        if (totalLength > MAX_BUFFERED_PROXY_RESPONSE_SIZE) {
+          upstreamRequest.destroy(new Error('Buffered proxy response exceeded size limit'));
+          return;
+        }
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      });
+
+      upstreamResponse.on('end', () => {
+        resolve({
+          statusCode: upstreamResponse.statusCode ?? 502,
+          headers: normalizeProxyHeaders(upstreamResponse.headers),
+          body: Buffer.concat(chunks).toString('utf8'),
+        });
+      });
+
+      upstreamResponse.on('error', reject);
+    });
+
+    upstreamRequest.on('error', reject);
+
+    if (body) {
+      upstreamRequest.write(body);
+    }
+
+    upstreamRequest.end();
+  });
+}
+
+async function maybeServeCachedProxyRequest(pathname, { method = 'GET', body = null } = {}, res) {
+  if (!isCacheableProviderRequest(pathname, method, body)) {
+    return false;
+  }
+
+  const cacheKey = buildCacheKey(pathname, method, body || '');
+  const ttlSeconds = CACHE_TTLS[pathname] ?? 60;
+  const { value, source } = await requestCache.getOrCompute(
+    cacheKey,
+    ttlSeconds,
+    () => {
+      totalRequests += 1;
+      return fetchBufferedInferenceResponse(pathname, { method, body });
+    },
+    {
+      shouldCache: (response) => (response?.statusCode ?? 500) < 400,
+    },
+  );
+
+  res.setHeader('X-Tenrary-Cache', source);
+  sendBufferedProxyResponse(res, value);
+  return true;
+}
+
+function proxyInferenceRequest(pathname, { method = 'GET', body = null } = {}, res) {
+  const upstreamRequest = requestInference(pathname, { method, body });
+
+  upstreamRequest.setTimeout(UPSTREAM_REQUEST_TIMEOUT_MS, () => {
+    upstreamRequest.destroy(new Error('Proxy request timeout'));
+  });
+
+  upstreamRequest.on('response', (upstreamResponse) => {
+    writeProxyHeaders(res, upstreamResponse);
+    upstreamResponse.pipe(res);
+  });
+
+  upstreamRequest.on('error', (error) => {
+    if (res.headersSent) {
+      res.end();
+      return;
+    }
+
+    res.writeHead(502, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: error.message || 'Failed to reach inference backend.' }));
+  });
+
+  if (body) {
+    upstreamRequest.write(body);
+  }
+
+  upstreamRequest.end();
+}
+
 function checkInferenceHealth() {
   return new Promise((resolve) => {
-    if (!serverProcess || !currentMode || isStarting) {
+    if (!isInferenceReady()) {
       resolve(false);
       return;
     }
 
-    const req = requestInference('/health');
+    const healthPath = isRemoteProviderMode(currentMode) ? '/v1/models' : '/health';
+    const req = requestInference(healthPath);
     req.setTimeout(3000, () => req.destroy(new Error('Health check timeout')));
     req.on('response', (res) => {
       res.resume();
@@ -234,7 +452,7 @@ function streamUpstreamToSink(params, sink) {
       for (const line of lines) {
         const event = parseSseLine(line);
         if (!event || event.type === 'meta') continue;
-        if (event.type === 'delta') { sink.onDelta(event.delta); continue; }
+        if (event.type === 'delta') { sink.onDelta(event.delta, event.channel); continue; }
         if (event.type === 'done') { finishStream(); return; }
         if (event.type === 'invalid') {
           sink.onError('Received malformed stream data from inference server.');
@@ -303,15 +521,15 @@ function processQueue() {
 
     if (entry.type === 'ws') {
       const handle = streamUpstreamToSink(entry.params, {
-        onDelta: (delta) => wsSend(entry.ws, { type: 'delta', delta }),
+        onDelta: (delta, channel) => wsSend(entry.ws, { type: 'delta', delta, channel }),
         onDone: () => { wsSend(entry.ws, { type: 'done' }); entry.cleanupRef = null; onComplete(); },
         onError: (msg) => { wsSend(entry.ws, { type: 'error', message: msg }); entry.cleanupRef = null; onComplete(); },
       });
       entry.cleanupRef = handle.cleanup;
     } else if (entry.type === 'sse') {
       const handle = streamUpstreamToSink(entry.params, {
-        onDelta: (delta) => {
-          if (!entry.disconnected) entry.res.write(`data: ${JSON.stringify({ type: 'delta', delta })}\n\n`);
+        onDelta: (delta, channel) => {
+          if (!entry.disconnected) entry.res.write(`data: ${JSON.stringify({ type: 'delta', delta, channel })}\n\n`);
         },
         onDone: () => {
           if (!entry.disconnected) { entry.res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`); entry.res.end(); }
@@ -357,7 +575,7 @@ websocketServer.on('connection', (ws) => {
       wsSend(ws, { type: 'error', message: 'Binary websocket messages are not supported.' });
       return;
     }
-    if (!serverProcess || !currentMode || isStarting) {
+    if (!isInferenceReady()) {
       wsSend(ws, { type: 'error', message: 'Inference server is not ready yet.' });
       return;
     }
@@ -427,7 +645,11 @@ websocketServer.on('connection', (ws) => {
 
 function killServer() {
   return new Promise((resolve) => {
-    if (!serverProcess) return resolve();
+    if (!serverProcess) {
+      currentMode = null;
+      resolve();
+      return;
+    }
 
     const proc = serverProcess;
     log(`Stopping ${currentMode} server (PID: ${proc.pid})...`);
@@ -460,6 +682,20 @@ function startServer(mode) {
     if (!MODES[mode]) return reject(new Error(`Unknown mode: ${mode}`));
 
     const config = MODES[mode];
+    if (config.type === 'provider') {
+      if (!config.baseURL || !config.apiKey) {
+        reject(new Error('EnowxAI provider is not configured. Set ENOWXAI_BASE_URL and ENOWXAI_API_KEY in .env.'));
+        return;
+      }
+      maxParallelSlots = clampSlots(resolveParallelSlots(mode));
+      currentMode = mode;
+      serverProcess = null;
+      isStarting = false;
+      log(`✓ ${mode} provider ready via ${config.baseURL}`);
+      resolve();
+      return;
+    }
+
     maxParallelSlots = clampSlots(resolveParallelSlots(mode));
     const args = [
       '-m', MODEL,
@@ -561,6 +797,38 @@ const controlServer = createServer(async (req, res) => {
 
   const url = new URL(req.url, `http://localhost:${CONTROL_PORT}`);
 
+  if (SUPPORTED_PROXY_GET_PATHS.has(url.pathname) && req.method === 'GET') {
+    if (!isInferenceReady()) {
+      res.writeHead(503, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: 'Inference server is not ready yet.' }));
+    }
+
+    if (await maybeServeCachedProxyRequest(url.pathname, { method: 'GET' }, res)) {
+      return;
+    }
+
+    return proxyInferenceRequest(url.pathname, { method: 'GET' }, res);
+  }
+
+  if (SUPPORTED_PROXY_POST_PATHS.has(url.pathname) && req.method === 'POST') {
+    if (!isInferenceReady()) {
+      res.writeHead(503, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: 'Inference server is not ready yet.' }));
+    }
+
+    try {
+      const rawBody = await readRequestBody(req);
+      if (await maybeServeCachedProxyRequest(url.pathname, { method: 'POST', body: rawBody }, res)) {
+        return;
+      }
+      return proxyInferenceRequest(url.pathname, { method: 'POST', body: rawBody }, res);
+    } catch (error) {
+      const statusCode = error.message === 'Payload too large' ? 413 : 400;
+      res.writeHead(statusCode, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: error.message || 'Invalid request body.' }));
+    }
+  }
+
   // GET /status
   if (url.pathname === '/status' && req.method === 'GET') {
     const healthy = await checkInferenceHealth();
@@ -648,7 +916,7 @@ const controlServer = createServer(async (req, res) => {
 
   // POST /manager/chat/sse — SSE fallback for WebSocket
   if ((url.pathname === '/manager/chat/sse' || url.pathname === '/chat/sse') && req.method === 'POST') {
-    if (!serverProcess || !currentMode || isStarting) {
+    if (!isInferenceReady()) {
       res.writeHead(503, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ error: 'Inference server is not ready yet.' }));
     }
@@ -729,10 +997,14 @@ controlServer.listen(CONTROL_PORT, () => {
   log(`Control API: http://localhost:${CONTROL_PORT}`);
   log(`Inference:   http://localhost:${INFERENCE_PORT}`);
   log(`Endpoints:`);
+  log(`  GET  /v1/models      — Proxy models endpoint`);
+  log(`  POST /v1/chat/completions — Proxy OpenAI chat completions`);
+  log(`  POST /v1/responses   — Proxy OpenAI responses API`);
+  log(`  POST /v1/messages    — Proxy Anthropic messages API`);
   log(`  GET  /status         — Current mode info`);
   log(`  GET  /health         — Inference health check`);
   log(`  GET  /metrics        — GPU & inference metrics`);
-  log(`  POST /switch?mode=X  — Switch mode (standard|turboquant)`);
+  log(`  POST /switch?mode=X  — Switch mode (${Object.keys(MODES).join('|')})`);
   log(`  POST /stop           — Stop server`);
   log(`  WS   /ws/chat        — Streaming chat bridge`);
   log(``);
