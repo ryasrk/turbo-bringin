@@ -5447,233 +5447,210 @@ details[open] > .profile-password-toggle::before { content: '▾ '; }
    ═══════════════════════════════════════════════════════════════ */
 
 /* ── 1. Agent Typing Indicator ─────────────────────────────────── */
+/* JS renders: .typing-dots > .typing-dot (×3) + .typing-label    */
 .agent-typing-indicator {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 6px 12px;
-  min-height: 0;
-  transition: min-height 0.2s ease;
-}
-.agent-typing-indicator:empty {
-  padding: 0;
-}
-.agent-typing-chip {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--accent) 12%, var(--bg-secondary));
-  border: 1px solid color-mix(in srgb, var(--accent) 20%, var(--border));
-  font-size: 12px;
-  color: var(--text-secondary);
+  gap: 8px;
+  padding: 6px 14px;
+  min-height: 0;
   animation: typing-fade-in 0.25s ease;
+}
+.agent-typing-indicator[hidden] {
+  display: none;
 }
 @keyframes typing-fade-in {
   from { opacity: 0; transform: translateY(4px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-.agent-typing-chip .typing-agent-name {
-  font-weight: 600;
-  color: var(--accent);
-}
 .typing-dots {
   display: inline-flex;
-  gap: 2px;
+  align-items: center;
+  gap: 3px;
 }
-.typing-dots span {
-  width: 4px;
-  height: 4px;
+.typing-dot {
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
   background: var(--accent);
   animation: typing-bounce 1.2s infinite ease-in-out;
 }
-.typing-dots span:nth-child(2) { animation-delay: 0.15s; }
-.typing-dots span:nth-child(3) { animation-delay: 0.3s; }
+.typing-dot:nth-child(2) { animation-delay: 0.15s; }
+.typing-dot:nth-child(3) { animation-delay: 0.3s; }
 @keyframes typing-bounce {
   0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
   30%           { opacity: 1;   transform: translateY(-3px); }
 }
+.typing-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-style: italic;
+}
 
 /* ── 2. Agent Handoff Visualization ────────────────────────────── */
+/* JS renders: .handoff-legend > .handoff-legend-item (.handoff-legend-dot)
+               .handoff-timeline > .handoff-entry > .handoff-arrow (.handoff-node, .handoff-connector, .handoff-time)
+                                                   > .handoff-preview */
+.handoff-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px 10px 8px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+.handoff-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.handoff-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
 .handoff-timeline {
   display: flex;
   flex-direction: column;
-  gap: 0;
-  padding: 8px 0;
+  gap: 2px;
+  padding: 4px 0;
 }
-.handoff-timeline-empty {
-  text-align: center;
-  padding: 16px 8px;
-  color: var(--text-tertiary);
-  font-size: 12px;
-  font-style: italic;
-}
-.handoff-event {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 8px 10px;
-  position: relative;
+.handoff-entry {
+  padding: 6px 10px;
+  border-radius: 8px;
+  transition: background 0.15s ease;
   animation: handoff-slide-in 0.3s ease;
+}
+.handoff-entry:hover {
+  background: color-mix(in srgb, var(--accent) 6%, var(--bg-secondary));
 }
 @keyframes handoff-slide-in {
   from { opacity: 0; transform: translateX(-8px); }
   to   { opacity: 1; transform: translateX(0); }
 }
-.handoff-event::before {
-  content: '';
-  position: absolute;
-  left: 20px;
-  top: 28px;
-  bottom: -8px;
-  width: 2px;
-  background: color-mix(in srgb, var(--accent) 25%, var(--border));
-}
-.handoff-event:last-child::before {
-  display: none;
-}
-.handoff-node {
-  flex-shrink: 0;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--accent) 18%, var(--bg-secondary));
-  border: 2px solid var(--accent);
+.handoff-arrow {
   display: flex;
   align-items: center;
-  justify-content: center;
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--accent);
-  z-index: 1;
+  gap: 6px;
+  flex-wrap: wrap;
 }
-.handoff-body {
-  flex: 1;
-  min-width: 0;
-}
-.handoff-agents {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-.handoff-agents .handoff-arrow {
-  color: var(--text-tertiary);
-  margin: 0 4px;
-}
-.handoff-content {
+.handoff-node {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
   font-size: 11px;
-  color: var(--text-secondary);
-  margin-top: 2px;
+  font-weight: 600;
+  color: #fff;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 200px;
+}
+.handoff-connector {
+  color: var(--text-tertiary);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
 }
 .handoff-time {
   font-size: 10px;
   color: var(--text-tertiary);
-  margin-top: 2px;
+  margin-left: auto;
+  white-space: nowrap;
+}
+.handoff-preview {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 3px;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ── 3. Agent Memory Panel ─────────────────────────────────────── */
-.agent-memory-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 4px 0;
-}
-.agent-memory-list-empty {
-  text-align: center;
-  padding: 16px 8px;
-  color: var(--text-tertiary);
-  font-size: 12px;
-  font-style: italic;
-}
+/* JS renders: .agent-memory-card > .agent-memory-header (.agent-memory-name, .agent-memory-meta)
+                                  > textarea.agent-memory-text
+                                  > .agent-memory-actions (.agent-memory-save, .agent-memory-clear) */
 .agent-memory-card {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 10px 12px;
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 8px;
   transition: border-color 0.15s ease;
+}
+.agent-memory-card:last-child {
+  margin-bottom: 0;
 }
 .agent-memory-card:hover {
   border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
 }
-.agent-memory-card-header {
+.agent-memory-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
 }
-.agent-memory-card-name {
+.agent-memory-name {
   font-size: 12px;
   font-weight: 600;
   color: var(--accent);
 }
-.agent-memory-card-actions {
-  display: flex;
-  gap: 4px;
-}
-.agent-memory-card-actions button {
-  padding: 2px 6px;
+.agent-memory-meta {
   font-size: 10px;
-  border-radius: 4px;
-  border: 1px solid var(--border);
-  background: var(--bg-primary);
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: all 0.15s ease;
+  color: var(--text-tertiary);
 }
-.agent-memory-card-actions button:hover {
-  background: color-mix(in srgb, var(--accent) 10%, var(--bg-primary));
-  border-color: var(--accent);
-  color: var(--text-primary);
-}
-.agent-memory-card-actions .agent-memory-clear:hover {
-  background: color-mix(in srgb, var(--danger, #e53e3e) 10%, var(--bg-primary));
-  border-color: var(--danger, #e53e3e);
-  color: var(--danger, #e53e3e);
-}
-.agent-memory-content {
-  font-size: 11px;
-  color: var(--text-secondary);
-  line-height: 1.5;
-  white-space: pre-wrap;
-  word-break: break-word;
-  max-height: 120px;
-  overflow-y: auto;
-}
-.agent-memory-textarea {
+.agent-memory-text {
+  display: block;
   width: 100%;
-  min-height: 60px;
-  padding: 6px 8px;
-  font-size: 11px;
+  min-height: 64px;
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.5;
   font-family: var(--font-mono, 'JetBrains Mono', monospace);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 8px;
   background: var(--bg-primary);
   color: var(--text-primary);
   resize: vertical;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
-.agent-memory-textarea:focus {
+.agent-memory-text:focus {
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent);
 }
+.agent-memory-text::placeholder {
+  color: var(--text-tertiary);
+  font-style: italic;
+}
+.agent-memory-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+.agent-memory-actions .btn-sm {
+  min-height: 32px;
+  min-width: 60px;
+}
+.agent-memory-actions .agent-memory-clear:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
 
 /* ── 4. Orchestration Config ───────────────────────────────────── */
-.orch-config {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 4px 0;
-}
+/* JS renders: .orch-config-row > .orch-config-group (×2, select + slider)
+               .orch-config-preview (.orch-config-preview-label, #orch-config-preview-text) */
 .orch-config-row {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 16px;
+}
+.orch-config-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 .orch-config-label {
   font-size: 11px;
@@ -5682,11 +5659,17 @@ details[open] > .profile-password-toggle::before { content: '▾ '; }
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
+.orch-config-label strong {
+  color: var(--accent);
+  text-transform: none;
+  letter-spacing: 0;
+}
 .orch-config-select {
-  padding: 6px 10px;
+  width: 100%;
+  padding: 8px 12px;
   font-size: 12px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 10px;
   background: var(--bg-primary);
   color: var(--text-primary);
   cursor: pointer;
@@ -5697,175 +5680,236 @@ details[open] > .profile-password-toggle::before { content: '▾ '; }
   border-color: var(--accent);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent);
 }
-.orch-config-slider-wrap {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
 .orch-config-slider {
-  flex: 1;
+  width: 100%;
   -webkit-appearance: none;
   appearance: none;
-  height: 4px;
-  border-radius: 2px;
+  height: 6px;
+  border-radius: 3px;
   background: var(--border);
   outline: none;
+  cursor: pointer;
 }
 .orch-config-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
-  width: 14px;
-  height: 14px;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
   background: var(--accent);
   cursor: pointer;
   border: 2px solid var(--bg-primary);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+  transition: transform 0.15s ease;
+}
+.orch-config-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
 }
 .orch-config-slider::-moz-range-thumb {
-  width: 14px;
-  height: 14px;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
   background: var(--accent);
   cursor: pointer;
   border: 2px solid var(--bg-primary);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.2);
 }
-.orch-config-slider-value {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--accent);
-  min-width: 16px;
-  text-align: center;
+.orch-config-slider:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 .orch-config-hint {
   font-size: 10px;
   color: var(--text-tertiary);
   font-style: italic;
+  line-height: 1.4;
+}
+.orch-config-preview {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-top: 4px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 6%, var(--bg-secondary));
+  border: 1px solid color-mix(in srgb, var(--accent) 15%, var(--border));
+  font-size: 11px;
+  line-height: 1.4;
+}
+.orch-config-preview-label {
+  font-weight: 600;
+  color: var(--accent);
+  white-space: nowrap;
+}
+#orch-config-preview-text {
+  color: var(--text-secondary);
 }
 
 /* ── 5. Token Usage Panel ──────────────────────────────────────── */
-.token-usage-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 4px 0;
-}
-.token-usage-panel-empty {
-  text-align: center;
-  padding: 16px 8px;
-  color: var(--text-tertiary);
-  font-size: 12px;
-  font-style: italic;
-}
+/* JS renders: .token-usage-summary > .token-usage-total (.token-usage-total-label, -value, -meta)
+                                    > .token-usage-bars > .token-usage-bar-row (-label, -track > -fill, -value, -meta)
+               details.token-usage-history > summary
+                                           > .token-usage-history-list > .token-usage-history-row (-agent, -tokens, -model, -time) */
 .token-usage-summary {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 10px;
 }
-.token-usage-agent-row {
+.token-usage-total {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.token-usage-total-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.token-usage-total-value {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+.token-usage-total-meta {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+.token-usage-bars {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 8px;
 }
-.token-usage-agent-header {
-  display: flex;
+.token-usage-bar-row {
+  display: grid;
+  grid-template-columns: 80px 1fr auto auto;
   align-items: center;
-  justify-content: space-between;
-  font-size: 11px;
+  gap: 8px;
 }
-.token-usage-agent-name {
+.token-usage-bar-label {
+  font-size: 11px;
   font-weight: 600;
   color: var(--text-primary);
-}
-.token-usage-agent-total {
-  color: var(--text-secondary);
-  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .token-usage-bar-track {
   height: 6px;
   border-radius: 3px;
   background: color-mix(in srgb, var(--border) 60%, var(--bg-secondary));
   overflow: hidden;
-  display: flex;
 }
-.token-usage-bar-prompt {
+.token-usage-bar-fill {
   height: 100%;
+  border-radius: 3px;
   background: var(--accent);
   transition: width 0.3s ease;
+  min-width: 2px;
 }
-.token-usage-bar-completion {
-  height: 100%;
-  background: color-mix(in srgb, var(--accent) 50%, var(--bg-secondary));
-  transition: width 0.3s ease;
+.token-usage-bar-value {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  min-width: 36px;
 }
-.token-usage-legend {
-  display: flex;
-  gap: 12px;
+.token-usage-bar-meta {
   font-size: 10px;
   color: var(--text-tertiary);
-  padding-top: 4px;
+  white-space: nowrap;
+  min-width: 40px;
 }
-.token-usage-legend-dot {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  margin-right: 4px;
-  vertical-align: middle;
+
+/* Token history — <details> collapsible */
+details.token-usage-history {
+  margin-top: 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
 }
-.token-usage-legend-dot.prompt {
-  background: var(--accent);
-}
-.token-usage-legend-dot.completion {
-  background: color-mix(in srgb, var(--accent) 50%, var(--bg-secondary));
-}
-.token-usage-total-row {
-  display: flex;
-  justify-content: space-between;
-  padding-top: 6px;
-  border-top: 1px solid var(--border);
-  font-size: 12px;
-  font-weight: 600;
-}
-.token-usage-total-label {
-  color: var(--text-secondary);
-}
-.token-usage-total-value {
-  color: var(--accent);
-  font-variant-numeric: tabular-nums;
-}
-.token-usage-history {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  max-height: 160px;
-  overflow-y: auto;
-}
-.token-usage-history-title {
+details.token-usage-history > summary {
+  padding: 8px 12px;
   font-size: 11px;
   font-weight: 600;
   color: var(--text-secondary);
-  margin-bottom: 2px;
+  cursor: pointer;
+  background: var(--bg-secondary);
+  list-style: none;
+  user-select: none;
+  transition: background 0.15s ease;
+}
+details.token-usage-history > summary::-webkit-details-marker {
+  display: none;
+}
+details.token-usage-history > summary::before {
+  content: '▸';
+  display: inline-block;
+  margin-right: 6px;
+  transition: transform 0.15s ease;
+}
+details.token-usage-history[open] > summary::before {
+  transform: rotate(90deg);
+}
+details.token-usage-history > summary:hover {
+  background: color-mix(in srgb, var(--accent) 6%, var(--bg-secondary));
+}
+.token-usage-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  max-height: 180px;
+  overflow-y: auto;
 }
 .token-usage-history-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
   align-items: center;
-  justify-content: space-between;
+  gap: 8px;
   font-size: 10px;
-  padding: 3px 6px;
-  border-radius: 4px;
-  background: var(--bg-secondary);
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: background 0.1s ease;
+}
+.token-usage-history-row:hover {
+  background: color-mix(in srgb, var(--accent) 5%, var(--bg-secondary));
 }
 .token-usage-history-agent {
   font-weight: 600;
   color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .token-usage-history-tokens {
   color: var(--text-secondary);
   font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.token-usage-history-model {
+  color: var(--text-tertiary);
+  font-size: 9px;
+  max-width: 80px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .token-usage-history-time {
   color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+/* ── Phase 3 shared: empty state ───────────────────────────────── */
+.empty-state {
+  text-align: center;
+  padding: 20px 12px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-style: italic;
+  line-height: 1.5;
 }
 
 /* ── Phase 3 section headers in AI page ────────────────────────── */
@@ -5878,4 +5922,15 @@ details[open] > .profile-password-toggle::before { content: '▾ '; }
   padding: 8px 0 4px;
   border-bottom: 1px solid var(--border);
   margin-bottom: 4px;
+}
+
+/* ── Phase 3: reduced motion ───────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .typing-dot,
+  .handoff-entry,
+  .agent-typing-indicator,
+  .token-usage-bar-fill {
+    animation: none !important;
+    transition: none !important;
+  }
 }
