@@ -31,50 +31,51 @@ function formatSize(bytes) {
 export function renderSnapshotSection(container) {
   if (!container) return;
 
-  const html = `
-    <details class="snapshot-section" open>
-      <summary class="snapshot-header">
-        <span>📸 Snapshots</span>
-        <span class="snapshot-count">${_snapshots.length}</span>
-      </summary>
-      <div class="snapshot-body">
-        <div class="snapshot-create-row">
-          <input type="text" class="snapshot-label-input" placeholder="Snapshot label…" maxlength="120" />
-          <button type="button" class="snapshot-create-btn" title="Create snapshot">📷</button>
-        </div>
-        <div class="snapshot-list">
-          ${_loading ? '<div class="snapshot-loading">Loading…</div>' : ''}
-          ${!_loading && _snapshots.length === 0 ? '<div class="snapshot-empty">No snapshots yet</div>' : ''}
-          ${_snapshots.map(s => `
-            <div class="snapshot-item" data-id="${escapeHtml(s.id)}">
-              <div class="snapshot-item-top">
-                <span class="snapshot-item-label" title="${escapeHtml(s.description || s.label)}">${escapeHtml(s.label)}</span>
-                <button type="button" class="snapshot-delete-btn" data-id="${escapeHtml(s.id)}" title="Delete">×</button>
-              </div>
-              <div class="snapshot-item-meta">
-                <span>${s.file_count} files</span>
-                <span>${formatSize(s.total_size)}</span>
-                <span>${formatSnapshotTime(s.created_at)}</span>
-              </div>
-            </div>
-          `).join('')}
-        </div>
-      </div>
-    </details>
+  // The container is now a <details class="sidebar-accordion"> element
+  const summaryHtml = `
+    <summary class="sidebar-accordion-header">
+      <span class="sidebar-accordion-icon">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="12" height="12" rx="2"/><path d="M8 5v6M5 8h6"/></svg>
+      </span>
+      <span class="sidebar-accordion-title">Snapshots</span>
+      <span class="sidebar-accordion-badge"${_snapshots.length === 0 ? ' hidden' : ''}>${_snapshots.length}</span>
+      <span class="sidebar-accordion-chevron">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4.5L6 7.5L9 4.5"/></svg>
+      </span>
+    </summary>
   `;
 
-  // Find or create the snapshot container
-  let section = container.querySelector('.snapshot-section-wrapper');
-  if (!section) {
-    section = document.createElement('div');
-    section.className = 'snapshot-section-wrapper';
-    container.appendChild(section);
-  }
-  section.innerHTML = html;
+  const bodyHtml = `
+    <div class="sidebar-accordion-body">
+      <div class="snapshot-create-row">
+        <input type="text" class="snapshot-label-input" placeholder="Snapshot label…" maxlength="120" />
+        <button type="button" class="snapshot-create-btn" title="Create snapshot">📷</button>
+      </div>
+      <div class="snapshot-list">
+        ${_loading ? '<div class="snapshot-loading">Loading…</div>' : ''}
+        ${!_loading && _snapshots.length === 0 ? '<div class="snapshot-empty">No snapshots yet</div>' : ''}
+        ${_snapshots.map(s => `
+          <div class="snapshot-item" data-id="${escapeHtml(s.id)}">
+            <div class="snapshot-item-top">
+              <span class="snapshot-item-label" title="${escapeHtml(s.description || s.label)}">${escapeHtml(s.label)}</span>
+              <button type="button" class="snapshot-delete-btn" data-id="${escapeHtml(s.id)}" title="Delete">×</button>
+            </div>
+            <div class="snapshot-item-meta">
+              <span>${s.file_count} files</span>
+              <span>${formatSize(s.total_size)}</span>
+              <span>${formatSnapshotTime(s.created_at)}</span>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
+
+  container.innerHTML = summaryHtml + bodyHtml;
 
   // Bind create
-  const input = section.querySelector('.snapshot-label-input');
-  const createBtn = section.querySelector('.snapshot-create-btn');
+  const input = container.querySelector('.snapshot-label-input');
+  const createBtn = container.querySelector('.snapshot-create-btn');
   if (createBtn && input) {
     createBtn.addEventListener('click', () => handleCreateSnapshot(input, container));
     input.addEventListener('keydown', (e) => {
@@ -83,7 +84,7 @@ export function renderSnapshotSection(container) {
   }
 
   // Bind delete
-  section.querySelectorAll('.snapshot-delete-btn').forEach(btn => {
+  container.querySelectorAll('.snapshot-delete-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       handleDeleteSnapshot(btn.dataset.id, container);
@@ -91,7 +92,7 @@ export function renderSnapshotSection(container) {
   });
 
   // Bind detail view on click
-  section.querySelectorAll('.snapshot-item').forEach(item => {
+  container.querySelectorAll('.snapshot-item').forEach(item => {
     item.addEventListener('click', (e) => {
       if (e.target.closest('.snapshot-delete-btn')) return;
       handleViewSnapshot(item.dataset.id, container);
@@ -154,7 +155,7 @@ async function handleViewSnapshot(snapshotId, container) {
         ${files.length === 0 ? '<div class="snapshot-empty">No files recorded</div>' : ''}
       </div>
     `;
-    container.querySelector('.snapshot-section-wrapper')?.appendChild(overlay);
+    container.querySelector('.sidebar-accordion-body')?.appendChild(overlay);
 
     overlay.querySelector('.snapshot-detail-close')?.addEventListener('click', () => overlay.remove());
   } catch (err) {

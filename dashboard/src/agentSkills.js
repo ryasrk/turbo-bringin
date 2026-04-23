@@ -22,17 +22,22 @@ let _catalogSkills = [];
 export function renderSkillSection(container) {
   _container = container;
   container.innerHTML = `
-    <details class="skill-section" open>
-      <summary class="skill-header">
-        🧠 Skills <span class="skill-count">0</span>
-      </summary>
-      <div class="skill-body">
-        <div class="skill-add-row">
-          <select class="skill-select"><option value="">+ Add skill…</option></select>
-        </div>
-        <div class="skill-list"></div>
+    <summary class="sidebar-accordion-header">
+      <span class="sidebar-accordion-icon">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2L2 6l6 4 6-4-6-4z"/><path d="M2 10l6 4 6-4"/></svg>
+      </span>
+      <span class="sidebar-accordion-title">Skills</span>
+      <span class="skill-count sidebar-accordion-badge" hidden>0</span>
+      <span class="sidebar-accordion-chevron">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4.5L6 7.5L9 4.5"/></svg>
+      </span>
+    </summary>
+    <div class="sidebar-accordion-body">
+      <div class="skill-add-row">
+        <select class="skill-select"><option value="">+ Add skill…</option></select>
       </div>
-    </details>
+      <div class="skill-list"></div>
+    </div>
   `;
 
   const select = container.querySelector('.skill-select');
@@ -67,7 +72,7 @@ export async function loadSkills(container) {
   if (!roomId) return;
 
   // Auto-render if not yet initialized
-  if (!target.querySelector('.skill-section')) {
+  if (!target.querySelector('.sidebar-accordion-body')) {
     renderSkillSection(target);
   }
 
@@ -87,7 +92,10 @@ export async function loadSkills(container) {
     _assignedSkills = assignedRes?.skills || [];
     _catalogSkills = catalogRes?.skills || [];
 
-    countEl.textContent = _assignedSkills.length;
+    if (countEl) {
+      countEl.textContent = _assignedSkills.length;
+      countEl.hidden = _assignedSkills.length === 0;
+    }
 
     // Populate select with unassigned skills
     const assignedIds = new Set(_assignedSkills.map((s) => s.skill_id));

@@ -264,22 +264,41 @@ export function createRoomsView() {
       </div>
       <div class="workspace-body">
         <div class="workspace-sidebar">
-          <div class="workspace-panel workspace-panel-files">
-            <div class="workspace-panel-header">
-              <h4>Workspace Files</h4>
-              <p>Navigate source files, notes, and generated outputs.</p>
+          <details class="sidebar-accordion" open>
+            <summary class="sidebar-accordion-header">
+              <span class="sidebar-accordion-icon">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h5v5H2z"/><path d="M9 4h5v5H9z"/><path d="M2 11h5v1H2z"/><path d="M9 11h5v1H9z"/></svg>
+              </span>
+              <span class="sidebar-accordion-title">Files</span>
+              <span id="sidebar-files-count" class="sidebar-accordion-badge" hidden>0</span>
+              <span class="sidebar-accordion-chevron">
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4.5L6 7.5L9 4.5"/></svg>
+              </span>
+            </summary>
+            <div class="sidebar-accordion-body">
+              <div class="sidebar-search-row">
+                <input type="text" id="sidebar-file-search" class="sidebar-search-input" placeholder="Search files…" autocomplete="off" />
+              </div>
+              <div id="agent-room-file-list" class="workspace-file-list"></div>
             </div>
-            <div id="agent-room-file-list" class="workspace-panel-body workspace-file-list"></div>
-          </div>
-          <div class="workspace-panel workspace-panel-progress">
-            <div class="workspace-panel-header">
-              <h4>Recent Artifacts</h4>
-              <p>Open the latest outputs created by agents.</p>
+          </details>
+          <details class="sidebar-accordion">
+            <summary class="sidebar-accordion-header">
+              <span class="sidebar-accordion-icon">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6"/><path d="M8 5v3l2 1.5"/></svg>
+              </span>
+              <span class="sidebar-accordion-title">Activity</span>
+              <span id="sidebar-activity-count" class="sidebar-accordion-badge" hidden>0</span>
+              <span class="sidebar-accordion-chevron">
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4.5L6 7.5L9 4.5"/></svg>
+              </span>
+            </summary>
+            <div class="sidebar-accordion-body">
+              <div id="agent-room-progress-items" class="workspace-progress-list"></div>
             </div>
-            <div id="agent-room-progress-items" class="workspace-panel-body workspace-progress-list"></div>
-          </div>
-          <div id="agent-room-snapshots" class="workspace-panel workspace-panel-snapshots"></div>
-          <div id="agent-room-skills" class="workspace-panel workspace-panel-skills"></div>
+          </details>
+          <details class="sidebar-accordion" id="agent-room-snapshots"></details>
+          <details class="sidebar-accordion" id="agent-room-skills"></details>
         </div>
         <div class="workspace-main">
           <div class="workspace-preview-header">
@@ -705,6 +724,16 @@ export function initRoomsUI() {
       const roomChat = rs.panel.querySelector('#room-chat');
       if (workspaceView) workspaceView.hidden = true;
       if (roomChat) roomChat.hidden = false;
+    });
+  }
+
+  // File search filter
+  const fileSearchInput = rs.panel.querySelector('#sidebar-file-search');
+  if (fileSearchInput) {
+    let searchDebounce = null;
+    fileSearchInput.addEventListener('input', () => {
+      clearTimeout(searchDebounce);
+      searchDebounce = setTimeout(() => renderAgentFiles(), 150);
     });
   }
 

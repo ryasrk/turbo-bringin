@@ -70,10 +70,16 @@ export function renderAgentProgress() {
   if (!containers.length) return;
 
   const countBadge = rs.panel.querySelector('#room-artifacts-count');
+  const sidebarBadge = rs.panel.querySelector('#sidebar-activity-count');
   const artifactCount = rs.agentRoomProgressTimeline.reduce((sum, item) => sum + (item.artifacts?.length || 0), 0);
+  const activityCount = rs.agentRoomProgressTimeline.length;
   if (countBadge) {
     countBadge.textContent = String(artifactCount);
     countBadge.hidden = artifactCount === 0;
+  }
+  if (sidebarBadge) {
+    sidebarBadge.textContent = String(activityCount);
+    sidebarBadge.hidden = activityCount === 0;
   }
 
   const emptyHtml = '<div class="workspace-empty-state">No agent activity yet.</div>';
@@ -170,6 +176,30 @@ export async function refreshAgentFiles() {
   }
 }
 
+// ── File Icons (SVG) ──────────────────────────────────────────
+const svgIconFolder = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4.5V12a1 1 0 001 1h10a1 1 0 001-1V6a1 1 0 00-1-1H8L6.5 3.5H3A1 1 0 002 4.5z"/></svg>';
+const svgIconFile = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2H4a1 1 0 00-1 1v10a1 1 0 001 1h8a1 1 0 001-1V6L9 2z"/><path d="M9 2v4h4"/></svg>';
+const svgIconCode = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5.5 4L2 8l3.5 4"/><path d="M10.5 4L14 8l-3.5 4"/></svg>';
+const svgIconImage = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="12" height="12" rx="1"/><circle cx="5.5" cy="5.5" r="1"/><path d="M14 10l-3-3-7 7"/></svg>';
+const svgIconMarkdown = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="14" height="10" rx="1"/><path d="M4 10V6l2 2.5L8 6v4"/><path d="M11 8l1.5 2L14 8"/></svg>';
+const svgIconData = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="8" cy="4" rx="5" ry="2"/><path d="M3 4v4c0 1.1 2.2 2 5 2s5-.9 5-2V4"/><path d="M3 8v4c0 1.1 2.2 2 5 2s5-.9 5-2V8"/></svg>';
+const svgIconStyle = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L4 14"/><circle cx="4" cy="5" r="2"/><circle cx="12" cy="11" r="2"/></svg>';
+
+const FILE_ICON_MAP = {
+  js: svgIconCode, ts: svgIconCode, jsx: svgIconCode, tsx: svgIconCode,
+  py: svgIconCode, go: svgIconCode, rs: svgIconCode, rb: svgIconCode,
+  html: svgIconCode, vue: svgIconCode, svelte: svgIconCode,
+  css: svgIconStyle, scss: svgIconStyle, less: svgIconStyle,
+  md: svgIconMarkdown, mdx: svgIconMarkdown,
+  json: svgIconData, yaml: svgIconData, yml: svgIconData, toml: svgIconData, xml: svgIconData, csv: svgIconData,
+  png: svgIconImage, jpg: svgIconImage, jpeg: svgIconImage, gif: svgIconImage, svg: svgIconImage, webp: svgIconImage,
+};
+
+function getFileIcon(filename) {
+  const ext = (filename.split('.').pop() || '').toLowerCase();
+  return FILE_ICON_MAP[ext] || svgIconFile;
+}
+
 export function renderAgentFiles() {
   if (!rs.panel) return;
   const files = normalizeWorkspaceEntriesResponse(rs.agentRoomWorkspaceFiles);
@@ -227,7 +257,7 @@ export function renderAgentFiles() {
       if (isDir) {
         html += `
           <div class="agent-file-item agent-file-dir" style="--depth:${depth};">
-            <span class="agent-file-icon">📁</span>
+            <span class="agent-file-icon">${svgIconFolder}</span>
             <span class="agent-file-name">${escapeHtml(key)}</span>
           </div>
         `;
@@ -242,10 +272,9 @@ export function renderAgentFiles() {
 
         html += `
           <button type="button" class="agent-file-item${selClass}" data-file-path="${fullPath}" data-file-kind="file" style="--depth:${depth};">
-            <span class="agent-file-icon">📄</span>
+            <span class="agent-file-icon">${getFileIcon(key)}</span>
             <span class="agent-file-main">
               <span class="agent-file-name">${escapeHtml(key)}</span>
-              <span class="agent-file-path">${escapeHtml(fullPath)}</span>
             </span>
             ${authorHtml}
           </button>
@@ -255,13 +284,35 @@ export function renderAgentFiles() {
     return html;
   }
 
+  // Get current search filter
+  const searchInput = rs.panel.querySelector('#sidebar-file-search');
+  const searchTerm = (searchInput?.value || '').toLowerCase().trim();
+
+  // Filter files by search term
+  const filteredFiles = searchTerm
+    ? files.filter(f => {
+        const path = typeof f?.path === 'string' ? f.path : '';
+        return path.toLowerCase().includes(searchTerm);
+      })
+    : files;
+
   const html = files.length === 0
-    ? '<div class="workspace-empty-state">Workspace is empty.</div>'
-    : renderTree(buildTree(files));
+    ? '<div class="sidebar-empty-state">Workspace is empty.</div>'
+    : filteredFiles.length === 0
+      ? '<div class="sidebar-empty-state">No files match your search.</div>'
+      : renderTree(buildTree(filteredFiles));
 
   containers.forEach((container) => {
     container.innerHTML = html;
   });
+
+  // Update file count badge
+  const fileCountBadge = rs.panel.querySelector('#sidebar-files-count');
+  const fileCount = files.filter(f => f.type !== 'directory').length;
+  if (fileCountBadge) {
+    fileCountBadge.textContent = String(fileCount);
+    fileCountBadge.hidden = fileCount === 0;
+  }
 }
 
 export async function openAgentFile(path) {
