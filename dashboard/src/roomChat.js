@@ -6,6 +6,8 @@ const _roomMessageEtags = new Map();
 
 export async function loadRoomMessages(roomId) {
   if (roomId !== rs.currentRoomId || rs.currentRoomMode !== 'team') return;
+  // Skip polling when tab is hidden — saves bandwidth and battery
+  if (document.hidden) return;
   try {
     const etag = _roomMessageEtags.get(roomId) || null;
     const result = await getRoomMessages(roomId, 50, null, etag);

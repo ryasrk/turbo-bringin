@@ -23,6 +23,7 @@ if (!existsSync(DATA_DIR)) {
 // ── Initialize Database ────────────────────────────────────────
 const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
+db.pragma('synchronous = NORMAL'); // Safe with WAL, 2-3x faster writes
 db.pragma('foreign_keys = ON');
 db.pragma('busy_timeout = 5000');
 

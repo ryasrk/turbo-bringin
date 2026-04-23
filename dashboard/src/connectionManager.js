@@ -264,15 +264,17 @@ export class ConnectionManager {
     this.checkHealth(url);
 
     this.#healthInterval = setInterval(() => {
-      // Skip polling while actively streaming
+      // Skip polling while actively streaming or tab is hidden
       if (this.#state === 'streaming') return;
+      if (document.hidden) return;
       this.checkHealth(url);
     }, intervalMs);
 
-    // React to browser online/offline events
+    // React to browser online/offline events and tab visibility
     if (typeof window !== 'undefined') {
       window.addEventListener('online', this.#handleOnline);
       window.addEventListener('offline', this.#handleOffline);
+      document.addEventListener('visibilitychange', this.#handleVisibility);
     }
   }
 
@@ -285,6 +287,7 @@ export class ConnectionManager {
     if (typeof window !== 'undefined') {
       window.removeEventListener('online', this.#handleOnline);
       window.removeEventListener('offline', this.#handleOffline);
+      document.removeEventListener('visibilitychange', this.#handleVisibility);
     }
   }
 
@@ -297,6 +300,13 @@ export class ConnectionManager {
 
   #handleOffline = () => {
     this.setState('disconnected');
+  };
+
+  /** Resume health check immediately when tab becomes visible again */
+  #handleVisibility = () => {
+    if (!document.hidden && this.#healthUrl) {
+      this.checkHealth(this.#healthUrl);
+    }
   };
 }
 
