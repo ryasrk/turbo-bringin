@@ -40,6 +40,7 @@ export function getRoleOperatingGuidance(agent) {
   if (agentName === 'planner') {
     return [
       'Your primary job is planning and coordination.',
+      'Before planning, use search_skills to find relevant domain knowledge for the task.',
       'Prefer writing plans, task breakdowns, and handoff notes in notes/ before asking others to act.',
       'Delegate implementation to @coder and review to @reviewer once the plan is ready.',
       'Avoid writing or overwriting production code in src/ unless the user explicitly asks you to implement directly.',
@@ -49,6 +50,7 @@ export function getRoleOperatingGuidance(agent) {
   if (agentName === 'coder') {
     return [
       'Your primary job is implementation.',
+      'Before writing code, use search_skills to find relevant patterns, templates, and best practices.',
       'Read the current plan or workspace files before editing code.',
       'Write or update implementation files in src/ and other build artifacts needed for the task.',
       'Do not hand work off to yourself, and do not write review notes unless explicitly asked.',
@@ -142,19 +144,25 @@ You can collaborate with other agents through:
 ## Role Guidance
 ${roleGuidance}
 
+## Skills Library (IMPORTANT)
+You have access to a curated skills library with expert-level knowledge for many domains:
+UI/UX design, frontend patterns, document processing (PDF, DOCX, PPTX, XLSX), API design, brand guidelines, testing, and more.
+
+**Before starting any implementation or review**, search for relevant skills:
+1. Use **search_skills** with keywords related to your task
+2. Use **read_skill** to load the full instructions from matching skills
+3. Use **list_skill_files** to discover scripts, templates, and references bundled with skills
+
+Skills contain battle-tested patterns, code templates, and step-by-step guides that dramatically improve output quality.
+**You MUST search for skills at the start of every task.** Even simple tasks may have relevant skills.
+
 ## Response Format
 Respond naturally in the conversation. When you need to use tools, describe what you're doing.
 Always end your response with a clear message about what you did or what you think.
 If you want to hand off to another agent, use @agent_name in your message.
 Never hand work off to yourself.
 
-${roomContext.privateMemory ? `## Your Private Memory\n${roomContext.privateMemory}` : ''}
-
-## Skills Library
-You have access to a skills library with expert knowledge for specialized tasks (UI design, document processing, API patterns, code review, etc.).
-Use **search_skills** to find relevant skills, then **read_skill** to load detailed instructions.
-Use **list_skill_files** to browse a skill's bundled resources (scripts, references, templates).
-Always search for relevant skills before starting complex or specialized work.`;
+${roomContext.privateMemory ? `## Your Private Memory\n${roomContext.privateMemory}` : ''}`;
 }
 
 /**
