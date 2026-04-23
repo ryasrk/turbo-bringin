@@ -11,6 +11,7 @@ import {
 } from './authClient.js';
 import { rs } from './roomsUtils.js';
 import { showToast } from './utils.js';
+import { showConfirm } from './confirmModal.js';
 
 let _container = null;
 let _assignedSkills = [];
@@ -123,7 +124,7 @@ export async function loadSkills(container) {
           <span class="skill-item-name">🧠 ${escapeHtml(skill.name || skill.skill_id)}</span>
           <button class="skill-remove-btn" title="Remove skill" data-id="${escapeHtml(skill.skill_id)}">×</button>
         </div>
-        <div class="skill-item-desc">${escapeHtml(truncate(skill.description || '', 80))}</div>
+        <div class="skill-item-desc">${escapeHtml(skill.description || '')}</div>
       `;
       listEl.appendChild(item);
     }
@@ -133,7 +134,13 @@ export async function loadSkills(container) {
       btn.addEventListener('click', async (e) => {
         e.stopPropagation();
         const skillId = btn.dataset.id;
-        if (!confirm(`Remove skill "${skillId}"?`)) return;
+        const confirmed = await showConfirm({
+          title: 'Remove Skill',
+          message: `Remove skill "${skillId}" from this room?`,
+          confirmText: 'Remove',
+          variant: 'danger',
+        });
+        if (!confirmed) return;
         btn.disabled = true;
         try {
           await removeRoomSkill(roomId, skillId);
