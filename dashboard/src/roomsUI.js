@@ -123,33 +123,38 @@ export function createRoomsView() {
 
         <!-- Agent Room Sidebar (only visible for AI Agent rooms) -->
         <aside class="room-agent-sidebar" id="room-agent-sidebar" hidden role="complementary" aria-label="Agent workspace sidebar">
-          <section class="agent-room-panel agent-room-panel-progress" role="region" aria-label="Agent progress">
-            <div class="agent-room-panel-header">
-              <div>
-                <h4>Live Progress</h4>
-                <p>Recent steps, tool calls, and generated artifacts.</p>
+          <div class="sidebar-scroll-body">
+            <section class="sidebar-section" role="region" aria-label="Agent progress">
+              <button class="sidebar-section-toggle" aria-expanded="true" data-section="progress">
+                <span class="sidebar-section-icon">⚡</span>
+                <span class="sidebar-section-title">Live Progress</span>
+                <span class="sidebar-section-chevron" aria-hidden="true">▾</span>
+              </button>
+              <div class="sidebar-section-body" id="sidebar-section-progress">
+                <div id="room-agent-progress" class="agent-room-progress" role="log" aria-live="polite"></div>
               </div>
-            </div>
-            <div id="room-agent-progress" class="agent-room-progress" role="log" aria-live="polite"></div>
-          </section>
-          <section class="agent-room-panel" role="region" aria-label="Handoff timeline">
-            <div class="agent-room-panel-header">
-              <div>
-                <h4>Handoff Flow</h4>
-                <p>Agent-to-agent delegation timeline.</p>
+            </section>
+            <section class="sidebar-section" role="region" aria-label="Handoff timeline">
+              <button class="sidebar-section-toggle" aria-expanded="true" data-section="handoffs">
+                <span class="sidebar-section-icon">🔀</span>
+                <span class="sidebar-section-title">Handoff Flow</span>
+                <span class="sidebar-section-chevron" aria-hidden="true">▾</span>
+              </button>
+              <div class="sidebar-section-body" id="sidebar-section-handoffs">
+                <div id="agent-room-handoff-viz" class="agent-room-handoff-viz"></div>
               </div>
-            </div>
-            <div id="agent-room-handoff-viz" class="agent-room-handoff-viz"></div>
-          </section>
-          <section class="agent-room-panel" role="region" aria-label="Activity log">
-            <div class="agent-room-panel-header">
-              <div>
-                <h4>Activity Log</h4>
-                <p>System events, agent actions, and updates.</p>
+            </section>
+            <section class="sidebar-section" role="region" aria-label="Activity log">
+              <button class="sidebar-section-toggle" aria-expanded="true" data-section="logs">
+                <span class="sidebar-section-icon">📋</span>
+                <span class="sidebar-section-title">Activity Log</span>
+                <span class="sidebar-section-chevron" aria-hidden="true">▾</span>
+              </button>
+              <div class="sidebar-section-body" id="sidebar-section-logs">
+                <div id="room-agent-logs" class="agent-room-logs" role="log" aria-live="polite"></div>
               </div>
-            </div>
-            <div id="room-agent-logs" class="agent-room-logs" role="log" aria-live="polite"></div>
-          </section>
+            </section>
+          </div>
         </aside>
       </div>
     </div>
@@ -679,6 +684,18 @@ export function initRoomsUI() {
   if (sidebarToggle) {
     sidebarToggle.addEventListener('click', () => toggleAgentSidebar());
   }
+
+  // Collapsible sidebar section toggles
+  rs.panel.querySelectorAll('.sidebar-section-toggle').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const section = btn.getAttribute('data-section');
+      const body = rs.panel.querySelector(`#sidebar-section-${section}`);
+      if (!body) return;
+      const isExpanded = btn.getAttribute('aria-expanded') === 'true';
+      btn.setAttribute('aria-expanded', String(!isExpanded));
+      body.classList.toggle('collapsed', isExpanded);
+    });
+  });
 
   const workspaceBack = rs.panel.querySelector('#workspace-back-btn');
   if (workspaceBack) {

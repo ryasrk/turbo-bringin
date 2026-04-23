@@ -3732,8 +3732,8 @@ details[open] > .profile-password-toggle::before { content: '▾ '; }
   border-left: 1px solid var(--border);
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--bg-secondary) 92%, transparent), color-mix(in srgb, var(--bg-primary) 85%, var(--bg-secondary)));
-  display: grid;
-  grid-template-rows: auto auto 1fr;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
   transition: width 0.2s ease, min-width 0.2s ease, opacity 0.2s ease;
 }
@@ -3746,11 +3746,105 @@ details[open] > .profile-password-toggle::before { content: '▾ '; }
   pointer-events: none;
   overflow: hidden;
 }
-.room-agent-sidebar .agent-room-panel {
+
+/* ── Unified Scrollable Sidebar Body ──────────────────────────── */
+
+.sidebar-scroll-body {
+  flex: 1;
   overflow-y: auto;
-  min-height: 0;
-  border-bottom: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--text-muted) 30%, transparent) transparent;
 }
+
+.sidebar-scroll-body::-webkit-scrollbar {
+  width: 5px;
+}
+
+.sidebar-scroll-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sidebar-scroll-body::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--text-muted) 25%, transparent);
+  border-radius: 999px;
+}
+
+.sidebar-scroll-body::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--text-muted) 40%, transparent);
+}
+
+/* ── Collapsible Sidebar Sections ─────────────────────────────── */
+
+.sidebar-section {
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+}
+
+.sidebar-section:last-child {
+  border-bottom: none;
+}
+
+.sidebar-section-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 14px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--text-primary);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  transition: background 0.15s ease;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: color-mix(in srgb, var(--bg-secondary) 92%, transparent);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.sidebar-section-toggle:hover {
+  background: color-mix(in srgb, var(--bg-secondary) 80%, var(--accent) 8%);
+}
+
+.sidebar-section-icon {
+  font-size: 13px;
+  line-height: 1;
+}
+
+.sidebar-section-title {
+  flex: 1;
+  text-align: left;
+}
+
+.sidebar-section-chevron {
+  font-size: 12px;
+  color: var(--text-muted);
+  transition: transform 0.2s ease;
+}
+
+.sidebar-section-toggle[aria-expanded="false"] .sidebar-section-chevron {
+  transform: rotate(-90deg);
+}
+
+.sidebar-section-body {
+  overflow: hidden;
+  transition: max-height 0.25s ease, opacity 0.2s ease;
+  max-height: 2000px;
+  opacity: 1;
+}
+
+.sidebar-section-body.collapsed {
+  max-height: 0;
+  opacity: 0;
+  padding: 0;
+}
+
+/* Legacy panel compat */
 .room-agent-sidebar .agent-room-panel-files {
   display: flex;
   flex-direction: column;
@@ -3782,8 +3876,6 @@ details[open] > .profile-password-toggle::before { content: '▾ '; }
     max-height: 300px;
     border-left: none;
     border-top: 1px solid var(--border);
-    grid-template-rows: auto;
-    grid-template-columns: 1fr 1fr 1fr;
   }
   .room-agent-sidebar.collapsed {
     max-height: 0;
@@ -4482,6 +4574,13 @@ details[open] > .profile-password-toggle::before { content: '▾ '; }
   line-height: 1.35;
 }
 
+/* Sidebar section content padding */
+.sidebar-section-body .agent-room-progress,
+.sidebar-section-body .agent-room-handoff-viz,
+.sidebar-section-body .agent-room-logs {
+  padding: 8px 10px 12px;
+}
+
 .agent-room-logs,
 .agent-room-files,
 .agent-room-file-preview {
@@ -4883,6 +4982,7 @@ details[open] > .profile-password-toggle::before { content: '▾ '; }
 
 /* ── Agent Progress Timeline ──────────────────────────────────── */
 
+/* Legacy — no longer grid-based, kept for compat */
 .agent-room-panel-progress {
   grid-template-rows: auto minmax(0, 1fr);
 }
