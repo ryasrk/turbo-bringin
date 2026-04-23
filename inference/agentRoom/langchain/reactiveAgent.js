@@ -20,6 +20,42 @@ import { createSkillTools } from './skillTools.js';
 const MAX_TOOL_ITERATIONS = 20;
 const SKILL_TOOL_NAMES_SET = new Set(['search_skills', 'read_skill', 'list_skill_files']);
 const RELEVANCE_THRESHOLD = 0.3;
+const SIMPLE_QUERY_MAX_WORDS = 12;
+const SIMPLE_QUERY_MAX_CHARS = 80;
+
+/**
+ * Detect whether a user message is "simple" — greetings, acknowledgments,
+ * short questions, or casual chat that doesn't need tools or deep reasoning.
+ * Returns true if the message can be handled with a lightweight LLM call.
+ */
+export function isSimpleQuery(content) {
+  const text = String(content || '').trim();
+  if (!text) return true;
+
+  const words = text.split(/\s+/);
+  // Long messages are never simple
+  if (words.length > SIMPLE_QUERY_MAX_WORDS || text.length > SIMPLE_QUERY_MAX_CHARS) return false;
+
+  // Messages with @mentions, file paths, or code blocks are complex
+  if (/@\w/.test(text) || /\/[\w.]+/.test(text) || /```/.test(text)) return false;
+
+  // Messages requesting action verbs are complex
+  const actionPatterns = /\b(create|build|write|implement|fix|debug|refactor|deploy|test|review|plan|analyze|design|update|delete|add|remove|install|configure|setup|migrate|optimize)\b/i;
+  if (actionPatterns.test(text)) return false;
+
+  // Greeting / acknowledgment patterns (multi-language)
+  const simplePatterns = /^(hi|hello|hey|yo|sup|thanks|thank you|thx|ok|okay|cool|nice|great|good|awesome|keren|mantap|siap|oke|bagus|makasih|terima kasih|lanjut|done|got it|understood|noted|sure|yes|no|yep|nope|alright|right|hmm|haha|lol|broo?|bro|woi|halo|hai)\b/i;
+  if (simplePatterns.test(text)) return true;
+
+  // Very short messages (≤4 words) without action verbs are likely simple
+  if (words.length <= 4) return true;
+
+  // Questions that are short and don't reference files/code
+  if (text.endsWith('?') && words.length <= 8) return true;
+
+  return false;
+}
+
 const KNOWN_TOOL_NAMES = new Set([
   'list_files',
   'read_file',
@@ -116,51 +152,25 @@ export function getAllowedCollaborationToolNames(agent) {
  */
 function buildReactiveSystemPrompt(agent, roomContext) {
   const agentList = roomContext.agents
-    .map((a) => `  - @${a.name}: ${a.role}${a.name === agent.name ? ' (you)' : ''}`)
-    .join('\n');
+    .map((a) => `@${a.name}: ${a.role}${a.name === agent.name ? ' (you)' : ''}`)
+    .join(', ');
   const roleGuidance = getRoleOperatingGuidance(agent)
     .map((line, index) => `${index + 1}. ${line}`)
     .join('\n');
 
-  return `${agent.system_prompt || `You are ${agent.name}.`}
+  const parts = [
+    agent.system_prompt || `You are ${agent.name}.`,
+    `\nRoom: ${roomContext.roomName}${roomContext.roomDescription ? ` — ${roomContext.roomDescription}` : ''}`,
+    `Team: ${agentList}`,
+    `\nWorkflow:\n${roleGuidance}`,
+    '\nRules: Be concise. Use @agent to delegate. Read before writing. Only claim work you actually did with tools.',
+  ];
 
-## Room Context
-Room: ${roomContext.roomName}
-${roomContext.roomDescription ? `Purpose: ${roomContext.roomDescription}` : ''}
+  if (roomContext.privateMemory) {
+    parts.push(`\nMemory:\n${formatPrivateMemoryForPrompt(roomContext.privateMemory)}`);
+  }
 
-## Team Members
-${agentList}
-
-## Your Capabilities
-You work inside an isolated workspace where you can read, write, and update files.
-You can collaborate with other agents through:
-- **propose**: Create formal proposals for team review
-- **respond_to_proposal**: Approve, reject, or suggest changes to proposals
-- **think_aloud**: Share your reasoning process visibly
-- **delegate**: Hand off specific tasks to other agents with @mentions
-
-## Your Workflow (follow this order)
-${roleGuidance}
-
-## Skills Library
-You have access to **search_skills**, **read_skill**, and **list_skill_files** tools.
-Skills contain expert patterns, templates, and guides for: UI/UX, frontend, API design, document processing, testing, brand, and more.
-Your RESEARCH step above tells you when to use them. Search with 2-3 specific keywords, read only the top match.
-
-## Collaboration Rules
-- **Think before acting** — Use think_aloud to share reasoning on important decisions.
-- **Propose before big changes** — Create a proposal for significant decisions.
-- **Build on others' work** — Read existing files before starting your own work.
-- **Mentions trigger teammates** — Only @mention when intentionally handing off or requesting review.
-- **Do the work you claim** — Never say a file was created unless you actually invoked the tool.
-- **Be concise** — Keep messages focused and actionable.
-
-## Response Format
-Respond naturally. When using tools, briefly describe what you're doing.
-End with a clear message about what you did or what you think.
-Use @agent_name to hand off. Never hand work off to yourself.
-
-${roomContext.privateMemory ? `## Your Private Memory\n${formatPrivateMemoryForPrompt(roomContext.privateMemory)}` : ''}`;
+  return parts.join('\n');
 }
 
 /**
@@ -380,6 +390,71 @@ function buildTextToolFollowUpMessage(toolResults) {
 }
 
 /**
+ * Lightweight agent turn for simple queries (greetings, acknowledgments, short chat).
+ * Uses a minimal system prompt, no tools, no workspace listing — saves ~80% tokens.
+ */
+export async function runSimpleAgentTurn({ agent, roomContext, input, conversationHistory }) {
+  const baseModel = createAgentModel(agent);
+
+  // Minimal system prompt — just identity and recent context
+  const agentList = roomContext.agents
+    .map((a) => `@${a.name}`)
+    .join(', ');
+  const systemPrompt = `${agent.system_prompt || `You are ${agent.name}.`}\nRoom: ${roomContext.roomName}. Team: ${agentList}.\nRespond naturally and concisely. No tools available in this mode.`;
+
+  const messages = [new SystemMessage(systemPrompt)];
+
+  // Only include last 3 messages for context (not 8)
+  const recentHistory = conversationHistory.slice(-3);
+  for (const msg of recentHistory) {
+    if (msg.sender_type === 'user') {
+      messages.push(new HumanMessage(`[${msg.sender_name}]: ${msg.content}`));
+    } else if (msg.sender_type === 'agent') {
+      if (msg.sender_name === agent.name) {
+        messages.push(new AIMessage(msg.content));
+      } else {
+        messages.push(new HumanMessage(`[@${msg.sender_name}]: ${msg.content}`));
+      }
+    }
+  }
+
+  messages.push(new HumanMessage(input));
+
+  try {
+    const result = await baseModel.invoke(messages);
+    const content = normalizeResponseContent(result.content);
+    const usage = result.additional_kwargs?.usage || {};
+
+    console.log(`[${agent.name}] Simple turn — ${usage.total_tokens || 0} tokens (fast-path)`);
+
+    return {
+      message: content || 'Got it.',
+      toolResults: [],
+      handoffs: [],
+      privateMemory: '',
+      usage: {
+        prompt_tokens: usage.prompt_tokens || 0,
+        completion_tokens: usage.completion_tokens || 0,
+        total_tokens: usage.total_tokens || 0,
+        model: result.additional_kwargs?.model || '',
+        provider: result.additional_kwargs?.provider || '',
+      },
+      confidence: 0.8,
+    };
+  } catch (error) {
+    console.error(`[${agent.name}] Simple turn failed:`, error.message);
+    return {
+      message: 'Got it.',
+      toolResults: [],
+      handoffs: [],
+      privateMemory: '',
+      usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, model: '', provider: '' },
+      confidence: 0.5,
+    };
+  }
+}
+
+/**
  * Run a single agent turn using LangChain ReAct-style reasoning.
  *
  * The agent:
@@ -494,61 +569,69 @@ export async function runReactiveAgentTurn({
   // Add the current input
   messages.push(new HumanMessage(input));
 
-  // ── Smart Workspace Listing ─────────────────────────────────
-  // Filter workspace listing to prioritize relevant files based on task keywords.
-  const workspaceListing = roomContext.workspaceListing || '[empty workspace]';
-  const workspaceLines = workspaceListing.split('\n').filter(Boolean);
-  const MAX_WORKSPACE_LINES = 50;
+  // ── Lazy Context Loading ─────────────────────────────────────
+  // Only include workspace listing, tool descriptions, and workflow reminder
+  // when the input suggests the agent needs to do actual work (not just chat).
+  // This saves ~300-500 tokens on conversational turns.
+  const needsWorkContext = !isSimpleQuery(
+    // Extract the raw user content from the formatted input
+    input.split('\n').slice(1, -2).join('\n').trim(),
+  );
 
-  let filteredListing;
-  if (workspaceLines.length <= MAX_WORKSPACE_LINES) {
-    filteredListing = workspaceListing;
-  } else {
-    // Extract task keywords for relevance filtering
-    const taskWords = new Set(
-      input.toLowerCase().split(/\s+/)
-        .filter((w) => w.length > 3)
-        .map((w) => w.replace(/[^a-z0-9]/g, ''))
-        .filter(Boolean),
-    );
-    // Always show key structural files
-    const keyPatterns = ['plan.md', 'review.md', 'README', 'src/', 'notes/', 'index', 'main', 'app', 'config'];
-    const relevantLines = [];
-    const otherLines = [];
+  if (needsWorkContext) {
+    // ── Smart Workspace Listing ─────────────────────────────────
+    const workspaceListing = roomContext.workspaceListing || '[empty workspace]';
+    const workspaceLines = workspaceListing.split('\n').filter(Boolean);
+    const MAX_WORKSPACE_LINES = 50;
 
-    for (const line of workspaceLines) {
-      const lower = line.toLowerCase();
-      const isKey = keyPatterns.some((p) => lower.includes(p.toLowerCase()));
-      const isRelevant = [...taskWords].some((w) => lower.includes(w));
-      if (isKey || isRelevant) {
-        relevantLines.push(line);
-      } else {
-        otherLines.push(line);
+    let filteredListing;
+    if (workspaceLines.length <= MAX_WORKSPACE_LINES) {
+      filteredListing = workspaceListing;
+    } else {
+      const taskWords = new Set(
+        input.toLowerCase().split(/\s+/)
+          .filter((w) => w.length > 3)
+          .map((w) => w.replace(/[^a-z0-9]/g, ''))
+          .filter(Boolean),
+      );
+      const keyPatterns = ['plan.md', 'review.md', 'README', 'src/', 'notes/', 'index', 'main', 'app', 'config'];
+      const relevantLines = [];
+      const otherLines = [];
+
+      for (const line of workspaceLines) {
+        const lower = line.toLowerCase();
+        const isKey = keyPatterns.some((p) => lower.includes(p.toLowerCase()));
+        const isRelevant = [...taskWords].some((w) => lower.includes(w));
+        if (isKey || isRelevant) {
+          relevantLines.push(line);
+        } else {
+          otherLines.push(line);
+        }
       }
+
+      const remaining = MAX_WORKSPACE_LINES - relevantLines.length;
+      const shown = [...relevantLines, ...otherLines.slice(0, Math.max(remaining, 10))];
+      const hidden = workspaceLines.length - shown.length;
+      filteredListing = shown.join('\n') + (hidden > 0 ? `\n... and ${hidden} more files (use list_files to explore)` : '');
     }
 
-    const remaining = MAX_WORKSPACE_LINES - relevantLines.length;
-    const shown = [...relevantLines, ...otherLines.slice(0, Math.max(remaining, 10))];
-    const hidden = workspaceLines.length - shown.length;
-    filteredListing = shown.join('\n') + (hidden > 0 ? `\n... and ${hidden} more files (use list_files to explore)` : '');
+    messages.push(new HumanMessage(`[system] Workspace:\n${filteredListing}`));
+
+    // Add compact tool descriptions
+    const toolDescriptions = allTools
+      .map((t) => `- ${t.name}: ${t.description}`)
+      .join('\n');
+    messages.push(new HumanMessage(
+      nativeToolCallingEnabled
+        ? `[system] Tools:\n${toolDescriptions}\n\nUse native tool calling. Fallback: \`\`\`json\n{"tool": "name", ...params}\n\`\`\``
+        : `[system] Tools (text mode):\n${toolDescriptions}\n\nUse JSON blocks: \`\`\`json\n{"tool": "name", ...params}\n\`\`\``,
+    ));
+
+    // Compact workflow reminder
+    messages.push(new HumanMessage(
+      '[system] Workflow: ORIENT → RESEARCH (search_skills) → EXECUTE. Do not skip steps.',
+    ));
   }
-
-  messages.push(new HumanMessage(`[system] Current workspace files:\n${filteredListing}`));
-
-  // Add available tools description
-  const toolDescriptions = allTools
-    .map((t) => `- ${t.name}: ${t.description}`)
-    .join('\n');
-  messages.push(new HumanMessage(
-    nativeToolCallingEnabled
-      ? `[system] Available tools:\n${toolDescriptions}\n\nUse native tool calling when it is available. If the provider does not support native tools, you may fall back to a JSON block like:\n\`\`\`json\n{"tool": "tool_name", ...params}\n\`\`\`\nAfter using tools, provide a clear final message.`
-      : `[system] Available tools:\n${toolDescriptions}\n\nThis provider is running in text tool mode. To use a tool, include a JSON block like:\n\`\`\`json\n{"tool": "tool_name", ...params}\n\`\`\`\nAfter using tools, provide a clear final message.`,
-  ));
-
-  // Workflow reminder — placed last so it's the most recent instruction
-  messages.push(new HumanMessage(
-    '[system] Follow your workflow steps in order: ORIENT first (read workspace), then RESEARCH (search_skills), then proceed with your role-specific steps. Do not skip steps.',
-  ));
 
   // Run the agent with tool execution loop
   const toolResults = [];

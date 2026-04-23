@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { extractToolCalls, getAllowedCollaborationToolNames, getRoleOperatingGuidance, getToolCallingMode, shouldAgentRespond } from './reactiveAgent.js';
+import { extractToolCalls, getAllowedCollaborationToolNames, getRoleOperatingGuidance, getToolCallingMode, isSimpleQuery, shouldAgentRespond } from './reactiveAgent.js';
 
 const agents = [
   { name: 'planner', role: 'Breaks work into steps and coordinates implementation.', system_prompt: '' },
@@ -190,4 +190,42 @@ test('getAllowedCollaborationToolNames narrows collaboration tools by role', () 
     [...getAllowedCollaborationToolNames({ name: 'reviewer' })].sort(),
     ['respond_to_proposal', 'think_aloud'],
   );
+});
+
+// ── isSimpleQuery ──────────────────────────────────────────────
+
+test('isSimpleQuery detects greetings and acknowledgments as simple', () => {
+  assert.equal(isSimpleQuery('hi'), true);
+  assert.equal(isSimpleQuery('hello'), true);
+  assert.equal(isSimpleQuery('thanks'), true);
+  assert.equal(isSimpleQuery('ok'), true);
+  assert.equal(isSimpleQuery('keren broo'), true);
+  assert.equal(isSimpleQuery('mantap'), true);
+  assert.equal(isSimpleQuery('nice work'), true);
+  assert.equal(isSimpleQuery('got it'), true);
+  assert.equal(isSimpleQuery('haha'), true);
+});
+
+test('isSimpleQuery detects short questions as simple', () => {
+  assert.equal(isSimpleQuery('how are you?'), true);
+  assert.equal(isSimpleQuery('what is this?'), true);
+  assert.equal(isSimpleQuery('why?'), true);
+});
+
+test('isSimpleQuery detects action requests as complex', () => {
+  assert.equal(isSimpleQuery('create a new file called app.js'), false);
+  assert.equal(isSimpleQuery('fix the bug in the parser'), false);
+  assert.equal(isSimpleQuery('build a REST API for user management'), false);
+  assert.equal(isSimpleQuery('implement the login flow with JWT'), false);
+  assert.equal(isSimpleQuery('refactor the database module'), false);
+});
+
+test('isSimpleQuery detects @mentions and file paths as complex', () => {
+  assert.equal(isSimpleQuery('@coder please help'), false);
+  assert.equal(isSimpleQuery('check /src/main.js'), false);
+  assert.equal(isSimpleQuery('```code block```'), false);
+});
+
+test('isSimpleQuery detects long messages as complex', () => {
+  assert.equal(isSimpleQuery('I need you to analyze the entire codebase and find all the performance bottlenecks then create a detailed report'), false);
 });

@@ -17,7 +17,7 @@ import {
 } from '../../db/database.js';
 import { listFiles } from '../fileTools.js';
 import { broadcastAgentRoomEvent } from '../wsBridge.js';
-import { runReactiveAgentTurn, shouldAgentRespond } from './reactiveAgent.js';
+import { runReactiveAgentTurn, runSimpleAgentTurn, shouldAgentRespond, isSimpleQuery } from './reactiveAgent.js';
 
 const DEFAULT_AUTONOMY_LEVEL = 2;
 const MAX_VISIBLE_HISTORY = 40;
@@ -404,7 +404,7 @@ export class LangChainAgentRoomOrchestrator extends EventEmitter {
         const name = c.agent.name.toLowerCase();
         if (!waveAgentNames.has(name)) {
           waveAgentNames.add(name);
-          wave.push({ agent: c.agent, input: buildAgentInput(firstTrigger) });
+          wave.push({ agent: c.agent, input: buildAgentInput(firstTrigger), triggerContent: firstTrigger.content });
         }
       }
 
@@ -420,10 +420,11 @@ export class LangChainAgentRoomOrchestrator extends EventEmitter {
         const independent = nextCandidates.filter((c) => !waveAgentNames.has(c.agent.name.toLowerCase()));
         if (independent.length > 0) {
           const nextInput = buildAgentInput(triggerQueue[i]);
+          const nextTriggerContent = triggerQueue[i].content;
           for (const c of independent) {
             if (wave.length >= roomConfig.maxAgentsPerCycle) break;
             waveAgentNames.add(c.agent.name.toLowerCase());
-            wave.push({ agent: c.agent, input: nextInput });
+            wave.push({ agent: c.agent, input: nextInput, triggerContent: nextTriggerContent });
           }
           triggerQueue.splice(i, 1);
         } else {
@@ -437,7 +438,7 @@ export class LangChainAgentRoomOrchestrator extends EventEmitter {
       }
 
       const results = await Promise.allSettled(
-        wave.map(({ agent, input }) => this.runAgentTurn(roomId, agent.name, input)),
+        wave.map(({ agent, input, triggerContent }) => this.runAgentTurn(roomId, agent.name, input, triggerContent)),
       );
 
       for (const result of results) {
@@ -520,7 +521,7 @@ export class LangChainAgentRoomOrchestrator extends EventEmitter {
     }
   }
 
-  async runAgentTurn(roomId, agentName, input) {
+  async runAgentTurn(roomId, agentName, input, triggerContent = '') {
     const room = getAgentRoom(roomId);
     if (!room) {
       throw new Error('Agent room not found');
@@ -563,55 +564,80 @@ export class LangChainAgentRoomOrchestrator extends EventEmitter {
       const roomSkills = listRoomSkills(roomId);
       const allowedSkillIds = roomSkills.map((s) => s.skill_id);
 
-      saveAgentRoomLog(roomId, agent.name, 'info', 'Started work on a room task', {
-        source: 'room_message',
-      });
-      this.emitRoomEvent(roomId, 'agent_room:log', {
-        log: {
-          agent_name: agent.name,
-          level: 'info',
-          message: 'Started work on a room task',
-          created_at: nowUnix(),
-          meta: {
-            source: 'room_message',
-          },
-        },
-      });
+      // ── Simple Query Fast-Path ──────────────────────────────
+      // Detect simple messages (greetings, acknowledgments, short chat) and
+      // use a lightweight LLM call — no tools, no workspace listing, minimal prompt.
+      const useSimplePath = isSimpleQuery(triggerContent);
 
-      const result = await runReactiveAgentTurn({
-        agent,
-        roomContext: {
-          roomId,
-          roomName: room.name,
-          roomDescription: room.description,
-          workspacePath: room.workspace_path,
-          workspaceListing,
-          privateMemory,
-          agents,
-          allowedSkillIds: allowedSkillIds.length > 0 ? allowedSkillIds : null,
-          spawnAgent: async ({ name, role, system_prompt, model_tier, tools }) => {
-            // Copy provider config from an existing agent of the same tier (or any agent as fallback)
-            const templateAgent = agents.find((a) => a.model_tier === model_tier) || agents[0];
-            const providerConfig = templateAgent?.provider_config || {};
-            createAgentRoomAgent(roomId, name, role, model_tier, system_prompt, tools, providerConfig);
-            this.emitRoomEvent(roomId, 'agent_room:agent_spawned', {
-              agent_name: name,
-              role,
-              model_tier,
-              tools,
-              spawned_by: agent.name,
-              timestamp: nowUnix(),
-            });
+      if (useSimplePath) {
+        saveAgentRoomLog(roomId, agent.name, 'info', 'Simple query fast-path', {
+          source: 'room_message',
+          fast_path: true,
+        });
+        this.emitRoomEvent(roomId, 'agent_room:log', {
+          log: {
+            agent_name: agent.name,
+            level: 'info',
+            message: 'Simple query fast-path',
+            created_at: nowUnix(),
+            meta: { source: 'room_message', fast_path: true },
           },
-        },
-        input,
-        conversationHistory: messages,
-        postMessage: async (senderName, content, eventType = 'message') => {
-          const message = this.postAgentMessage(roomId, senderName, content, eventType);
-          if (message) postedMessages.push(message);
-          return message;
-        },
-      });
+        });
+      } else {
+        saveAgentRoomLog(roomId, agent.name, 'info', 'Started work on a room task', {
+          source: 'room_message',
+        });
+        this.emitRoomEvent(roomId, 'agent_room:log', {
+          log: {
+            agent_name: agent.name,
+            level: 'info',
+            message: 'Started work on a room task',
+            created_at: nowUnix(),
+            meta: { source: 'room_message' },
+          },
+        });
+      }
+
+      const result = useSimplePath
+        ? await runSimpleAgentTurn({
+            agent,
+            roomContext: { roomId, roomName: room.name, agents },
+            input,
+            conversationHistory: messages,
+          })
+        : await runReactiveAgentTurn({
+            agent,
+            roomContext: {
+              roomId,
+              roomName: room.name,
+              roomDescription: room.description,
+              workspacePath: room.workspace_path,
+              workspaceListing,
+              privateMemory,
+              agents,
+              allowedSkillIds: allowedSkillIds.length > 0 ? allowedSkillIds : null,
+              spawnAgent: async ({ name, role, system_prompt, model_tier, tools }) => {
+                const templateAgent = agents.find((a) => a.model_tier === model_tier) || agents[0];
+                const providerConfig = templateAgent?.provider_config || {};
+                createAgentRoomAgent(roomId, name, role, model_tier, system_prompt, tools, providerConfig);
+                this.emitRoomEvent(roomId, 'agent_room:agent_spawned', {
+                  agent_name: name,
+                  role,
+                  model_tier,
+                  tools,
+                  spawned_by: agent.name,
+                  timestamp: nowUnix(),
+                });
+              },
+            },
+            input,
+            conversationHistory: messages,
+            postMessage: async (senderName, content, eventType = 'message') => {
+              const message = this.postAgentMessage(roomId, senderName, content, eventType);
+              if (message) postedMessages.push(message);
+              return message;
+            },
+          });
 
       const actionErrors = [];
       const fileArtifacts = [];
