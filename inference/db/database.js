@@ -287,7 +287,7 @@ const stmts = {
     INSERT INTO agent_room_token_usage (id, room_id, agent_name, prompt_tokens, completion_tokens, total_tokens, model, provider)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `),
-  getAgentRoomTokenSummary: db.query(`
+  getAgentRoomTokenSummary: readDb.query(`
     SELECT agent_name,
            SUM(prompt_tokens) AS prompt_tokens,
            SUM(completion_tokens) AS completion_tokens,
@@ -298,7 +298,7 @@ const stmts = {
     GROUP BY agent_name
     ORDER BY total_tokens DESC
   `),
-  getAgentRoomTokenHistory: db.query(`
+  getAgentRoomTokenHistory: readDb.query(`
     SELECT id, agent_name, prompt_tokens, completion_tokens, total_tokens, model, provider, created_at
     FROM agent_room_token_usage
     WHERE room_id = ?
@@ -311,7 +311,7 @@ const stmts = {
     INSERT INTO agent_room_logs (id, room_id, agent_name, level, message, meta_json)
     VALUES (?, ?, ?, ?, ?, ?)
   `),
-  listAgentRoomLogs: db.query(`
+  listAgentRoomLogs: readDb.query(`
     SELECT * FROM agent_room_logs
     WHERE room_id = ?
     ORDER BY created_at DESC
@@ -323,7 +323,7 @@ const stmts = {
     INSERT INTO agent_room_tasks (id, room_id, title, details, status, priority, assignee_name, created_by)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `),
-  listAgentRoomTasks: db.query(`
+  listAgentRoomTasks: readDb.query(`
     SELECT * FROM agent_room_tasks
     WHERE room_id = ?
     ORDER BY
@@ -341,7 +341,7 @@ const stmts = {
       updated_at DESC,
       created_at DESC
   `),
-  getAgentRoomTask: db.query(`
+  getAgentRoomTask: readDb.query(`
     SELECT * FROM agent_room_tasks
     WHERE room_id = ? AND id = ?
   `),
@@ -352,7 +352,7 @@ const stmts = {
   `),
 
   // Agent room file review gates
-  getAgentRoomFileReview: db.query(`
+  getAgentRoomFileReview: readDb.query(`
     SELECT * FROM agent_room_file_reviews
     WHERE room_id = ? AND file_path = ?
   `),
@@ -371,14 +371,14 @@ const stmts = {
     INSERT INTO agent_room_snapshots (id, room_id, label, description, file_count, total_size, snapshot_data, created_by)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `),
-  listSnapshots: db.query(`
+  listSnapshots: readDb.query(`
     SELECT id, room_id, label, description, file_count, total_size, created_by, created_at
     FROM agent_room_snapshots
     WHERE room_id = ?
     ORDER BY created_at DESC
     LIMIT ?
   `),
-  getSnapshot: db.query(`
+  getSnapshot: readDb.query(`
     SELECT * FROM agent_room_snapshots
     WHERE room_id = ? AND id = ?
   `),
@@ -395,7 +395,7 @@ const stmts = {
   removeRoomSkill: db.query(`
     DELETE FROM agent_room_skills WHERE room_id = ? AND skill_id = ?
   `),
-  listRoomSkills: db.query(`
+  listRoomSkills: readDb.query(`
     SELECT skill_id, added_by, added_at FROM agent_room_skills
     WHERE room_id = ? ORDER BY added_at ASC
   `),

@@ -22,7 +22,7 @@ function getStoredTokens() {
 
 function storeTokens(tokens) {
   localStorage.setItem(TOKEN_KEY, JSON.stringify(tokens));
-  scheduleRefresh(tokens.expires_in);
+  scheduleRefresh(tokens.expires_in || 900);
 }
 
 function clearTokens() {

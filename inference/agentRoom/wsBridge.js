@@ -123,7 +123,7 @@ agentRoomWss.on('connection', (ws, req, client) => {
   }
 
   // Detect MessagePack subprotocol negotiation (set by handleProtocols)
-  ws._useMsgpack = ws._protocol === MSGPACK_SUBPROTOCOL;
+  ws._useMsgpack = ws.protocol === MSGPACK_SUBPROTOCOL;
   ws._agentRoomUserId = client.user.id;
   roomUserSocketCounts.set(countKey, currentCount + 1);
   addSocket(roomId, ws);
