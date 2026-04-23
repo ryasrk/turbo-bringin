@@ -16,6 +16,7 @@ import { WebSocketServer } from 'ws';
 
 import { buildCacheKey, CACHE_TTLS, RequestCache, shouldCacheRequest } from './requestCache.js';
 import { sendCompressedJson } from './compression.js';
+import { getCacheStats } from './db/database.js';
 import { handleAgentRoomUpgrade } from './agentRoom/wsBridge.js';
 import { buildChatCompletionPayload, parseSseLine, splitSseLines } from './streamProxy.js';
 import { routeApiRequest } from './routes/apiRouter.js';
@@ -1009,6 +1010,7 @@ const controlServer = createServer(async (req, res) => {
         mode: currentMode || 'offline',
         context_size: parseInt(contextSize, 10),
       },
+      cache: getCacheStats(),
     });
   }
 
@@ -1115,6 +1117,11 @@ const controlServer = createServer(async (req, res) => {
 });
 
 attachWebSocketBridge(controlServer);
+
+// ── Server tuning ──────────────────────────────────────────────
+controlServer.keepAliveTimeout = 65_000;   // Slightly above typical proxy/CDN timeout (60s)
+controlServer.headersTimeout = 66_000;     // Must be > keepAliveTimeout
+controlServer.maxHeadersCount = 50;        // Limit header count for security
 
 // ── Startup ────────────────────────────────────────────────────
 controlServer.listen(CONTROL_PORT, () => {

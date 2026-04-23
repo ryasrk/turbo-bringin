@@ -482,12 +482,15 @@ export function findUserPublic(id) {
   return row;
 }
 export function updateUser(id, fields) {
+  // Look up username before invalidation (may be cached or in DB)
+  const existing = stmts.findUserById.get(id);
   if (fields.display_name !== undefined) stmts.updateDisplayName.run(fields.display_name, id);
   if (fields.avatar_url !== undefined) stmts.updateAvatar.run(fields.avatar_url, id);
   if (fields.password_hash !== undefined) stmts.updatePassword.run(fields.password_hash, id);
   // Invalidate all cached variants for this user
   userCache.invalidatePrefix(`uid:${id}`);
   userCache.invalidatePrefix(`upub:${id}`);
+  if (existing?.username) userCache.invalidate(`uname:${existing.username}`);
 }
 
 // Refresh tokens
