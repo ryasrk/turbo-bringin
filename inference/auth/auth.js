@@ -13,8 +13,26 @@ import {
 } from '../db/database.js';
 
 // ── Config ─────────────────────────────────────────────────────
+const INSECURE_DEFAULTS = new Set([
+  'tenrary-x-access-secret-change-me',
+  'tenrary-x-refresh-secret-change-me',
+  'change-me', 'secret', 'password', '',
+]);
+
 const ACCESS_SECRET = process.env.JWT_ACCESS_SECRET || 'tenrary-x-access-secret-change-me';
 const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'tenrary-x-refresh-secret-change-me';
+
+// Warn loudly (and block in production) if using default secrets
+if (INSECURE_DEFAULTS.has(ACCESS_SECRET) || INSECURE_DEFAULTS.has(REFRESH_SECRET)) {
+  const msg = '[SECURITY] JWT secrets are using insecure defaults! Set JWT_ACCESS_SECRET and JWT_REFRESH_SECRET environment variables.';
+  if (process.env.NODE_ENV === 'production') {
+    console.error(`\x1b[31m✖ FATAL: ${msg}\x1b[0m`);
+    process.exit(1);
+  } else {
+    console.warn(`\x1b[33m⚠ WARNING: ${msg} (allowed in development)\x1b[0m`);
+  }
+}
+
 const ACCESS_EXPIRY = '15m';
 const REFRESH_EXPIRY_SECONDS = 30 * 24 * 60 * 60; // 30 days
 const BCRYPT_ROUNDS = 12;

@@ -828,9 +828,19 @@ function isAuthorizedMutation(req) {
 
 // ── Control API Server ─────────────────────────────────────────
 const controlServer = createServer(async (req, res) => {
-  res.setHeader('Access-Control-Allow-Origin', getCorsOrigin(req.headers.origin || ''));
+  // ── Security headers ─────────────────────────────────────────
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('X-XSS-Protection', '0'); // Disabled — modern CSP is preferred
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+
+  // ── CORS ─────────────────────────────────────────────────────
+  const origin = getCorsOrigin(req.headers.origin || '');
+  res.setHeader('Access-Control-Allow-Origin', origin);
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Vary', 'Origin');
 
   if (req.method === 'OPTIONS') {
     res.writeHead(204);
@@ -1087,6 +1097,18 @@ const startMode = process.argv[2] || 'enowxai';
 switchMode(startMode).catch((err) => {
   log(`Failed to start: ${err.message}`);
   process.exit(1);
+});
+
+// ── Process error handlers ─────────────────────────────────────
+process.on('unhandledRejection', (reason, promise) => {
+  log(`Unhandled rejection: ${reason instanceof Error ? reason.stack || reason.message : reason}`);
+  // Don't crash — log and continue. Critical rejections should be caught at source.
+});
+
+process.on('uncaughtException', (err) => {
+  log(`Uncaught exception: ${err.stack || err.message}`);
+  // Graceful shutdown on uncaught exception — state may be corrupted
+  killServer().finally(() => process.exit(1));
 });
 
 // Graceful shutdown

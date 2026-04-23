@@ -7,6 +7,30 @@ import { register, login, logout, logoutAll, verifyRefreshTokenAndRotate, authen
 import { sendJson, readBody } from './apiRouter.js';
 import { updateUser, findUserById } from '../db/database.js';
 import { hashPassword, verifyPassword, validatePassword } from '../auth/auth.js';
+import { createRateLimiter } from '../rateLimit.js';
+
+// ── Rate Limiters ──────────────────────────────────────────────
+// Login: 5 attempts per 15 minutes per IP (brute-force protection)
+const loginLimiter = createRateLimiter({ windowMs: 15 * 60 * 1000, maxHits: 5, message: 'Too many login attempts. Try again in 15 minutes.' });
+// Register: 3 accounts per hour per IP (spam protection)
+const registerLimiter = createRateLimiter({ windowMs: 60 * 60 * 1000, maxHits: 3, message: 'Too many registrations. Try again later.' });
+// Refresh: 20 per 15 minutes per IP
+const refreshLimiter = createRateLimiter({ windowMs: 15 * 60 * 1000, maxHits: 20, message: 'Too many token refresh requests.' });
+
+function getClientIp(req) {
+  return req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || 'unknown';
+}
+
+function checkRateLimit(limiter, req, res) {
+  const ip = getClientIp(req);
+  const result = limiter.check(ip);
+  if (!result.allowed) {
+    const retryAfterSec = Math.ceil(result.retryAfterMs / 1000);
+    sendJson(res, 429, { error: limiter.message }, { 'Retry-After': String(retryAfterSec) });
+    return false;
+  }
+  return true;
+}
 
 /**
  * @param {string} path
@@ -18,6 +42,7 @@ export async function handleAuthRoute(path, req, res) {
 
   // POST /api/auth/register
   if (path === '/api/auth/register' && req.method === 'POST') {
+    if (!checkRateLimit(registerLimiter, req, res)) return true;
     try {
       const body = await readBody(req);
       const { username, email, password, display_name } = body;
@@ -42,6 +67,7 @@ export async function handleAuthRoute(path, req, res) {
 
   // POST /api/auth/login
   if (path === '/api/auth/login' && req.method === 'POST') {
+    if (!checkRateLimit(loginLimiter, req, res)) return true;
     try {
       const body = await readBody(req);
       const { username, password } = body;
@@ -66,6 +92,7 @@ export async function handleAuthRoute(path, req, res) {
 
   // POST /api/auth/refresh
   if (path === '/api/auth/refresh' && req.method === 'POST') {
+    if (!checkRateLimit(refreshLimiter, req, res)) return true;
     try {
       const body = await readBody(req);
       const { refresh_token } = body;
