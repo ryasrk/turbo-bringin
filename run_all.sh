@@ -35,7 +35,8 @@ NC='\033[0m'
 
 stop_all() {
     echo -e "${YELLOW}Stopping all services...${NC}"
-    pkill -f "node.*inference/manager\.js" 2>/dev/null && echo "  Manager stopped." || true
+    pkill -f "bun.*inference/manager\.js" 2>/dev/null && echo "  Manager stopped." || true
+    pkill -f "node.*inference/manager\.js" 2>/dev/null || true
     pkill -f "llama-server.*Bonsai" 2>/dev/null && echo "  Inference server stopped." || true
     pkill -f "vite.*--port 3000" 2>/dev/null || true
     # Kill dashboard by port if vite pattern doesn't match
@@ -51,7 +52,7 @@ case "$MODE" in
     status)
         echo "═══ Tenrary-X Status ═══"
         echo ""
-        if pgrep -f "node.*manager.js" > /dev/null 2>&1; then
+        if pgrep -f "(bun|node).*manager.js" > /dev/null 2>&1; then
             echo -e "  Manager:   ${GREEN}running${NC}"
             python3 -c "import urllib.request,json; r=urllib.request.urlopen('http://localhost:3002/status'); d=json.loads(r.read()); print(f'  Mode:      {d[\"mode\"]} ({d[\"label\"]})')" 2>/dev/null || true
         else
@@ -91,6 +92,7 @@ if [[ ! -d "dashboard/node_modules" ]]; then
 fi
 
 # ── Stop existing services ─────────────────────────────────────
+pkill -f "bun.*inference/manager\.js" 2>/dev/null || true
 pkill -f "node.*inference/manager\.js" 2>/dev/null || true
 pkill -f "llama-server.*Bonsai" 2>/dev/null || true
 lsof -ti:3000 2>/dev/null | xargs kill 2>/dev/null || true
@@ -110,7 +112,7 @@ fi
 echo -e "${CYAN}═══ Tenrary-X ═══${NC}"
 echo ""
 echo -e "Starting inference manager (${GREEN}${MODE}${NC} mode)..."
-node inference/manager.js "$MODE" &
+bun inference/manager.js "$MODE" &
 MANAGER_PID=$!
 
 # Wait for manager to be ready (max 30s)

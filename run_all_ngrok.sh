@@ -66,7 +66,8 @@ validate_ngrok() {
 stop_all() {
     echo -e "${YELLOW}Stopping all services...${NC}"
     pkill -f "ngrok http" 2>/dev/null && echo "  Ngrok stopped." || true
-    pkill -f "node.*inference/manager\.js" 2>/dev/null && echo "  Manager stopped." || true
+    pkill -f "bun.*inference/manager\.js" 2>/dev/null && echo "  Manager stopped." || true
+    pkill -f "node.*inference/manager\.js" 2>/dev/null || true
     pkill -f "llama-server.*Bonsai" 2>/dev/null && echo "  Inference server stopped." || true
     pkill -f "vite.*--port ${DASHBOARD_PORT}" 2>/dev/null || true
     lsof -ti:"$DASHBOARD_PORT" 2>/dev/null | xargs kill 2>/dev/null || true
@@ -77,7 +78,7 @@ stop_all() {
 show_status() {
     echo "═══ Tenrary-X + Ngrok Status ═══"
     echo ""
-    if pgrep -f "node.*manager.js" > /dev/null 2>&1; then
+    if pgrep -f "(bun|node).*manager.js" > /dev/null 2>&1; then
         echo -e "  Manager:   ${GREEN}running${NC}"
         python3 -c "import urllib.request,json; r=urllib.request.urlopen('http://localhost:${CONTROL_PORT}/status'); d=json.loads(r.read()); print(f'  Mode:      {d[\"mode\"]} ({d[\"label\"]})')" 2>/dev/null || true
     else
@@ -134,6 +135,7 @@ fi
 
 # ── Stop existing services ─────────────────────────────────────
 pkill -f "ngrok http" 2>/dev/null || true
+pkill -f "bun.*inference/manager\.js" 2>/dev/null || true
 pkill -f "node.*inference/manager\.js" 2>/dev/null || true
 pkill -f "llama-server.*Bonsai" 2>/dev/null || true
 lsof -ti:"$DASHBOARD_PORT" 2>/dev/null | xargs kill 2>/dev/null || true
@@ -153,7 +155,7 @@ fi
 echo -e "${CYAN}═══ Tenrary-X + Ngrok ═══${NC}"
 echo ""
 echo -e "Starting inference manager (${GREEN}${MODE}${NC} mode)..."
-node inference/manager.js "$MODE" &
+bun inference/manager.js "$MODE" &
 MANAGER_PID=$!
 
 # Wait for manager to be ready (max 30s)

@@ -1,9 +1,10 @@
 /**
  * Tenrary-X Database Layer
- * SQLite via better-sqlite3 — synchronous, WAL mode, parameterized queries only.
+ * SQLite via bun:sqlite — native, zero-overhead, synchronous, WAL mode, parameterized queries only.
+ * Migrated from better-sqlite3 for 3-6× faster read performance.
  */
 
-import Database from 'better-sqlite3';
+import { Database } from 'bun:sqlite';
 import { readFileSync, mkdirSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -22,30 +23,30 @@ if (!existsSync(DATA_DIR)) {
 }
 
 // ── Initialize Database ────────────────────────────────────────
-const db = new Database(DB_PATH);
-db.pragma('journal_mode = WAL');
-db.pragma('synchronous = NORMAL');   // Safe with WAL, 2-3× faster writes
-db.pragma('foreign_keys = ON');
-db.pragma('busy_timeout = 5000');
-db.pragma('cache_size = -64000');    // 64 MB page cache (default ~2 MB)
-db.pragma('mmap_size = 268435456');  // 256 MB memory-mapped I/O
-db.pragma('temp_store = MEMORY');    // Temp tables in RAM instead of disk
+const db = new Database(DB_PATH, { create: true });
+db.run('PRAGMA journal_mode = WAL');
+db.run('PRAGMA synchronous = NORMAL');   // Safe with WAL, 2-3× faster writes
+db.run('PRAGMA foreign_keys = ON');
+db.run('PRAGMA busy_timeout = 5000');
+db.run('PRAGMA cache_size = -64000');    // 64 MB page cache (default ~2 MB)
+db.run('PRAGMA mmap_size = 268435456');  // 256 MB memory-mapped I/O
+db.run('PRAGMA temp_store = MEMORY');    // Temp tables in RAM instead of disk
 
 // ── Read-Only Connection ───────────────────────────────────────
 // WAL mode allows concurrent readers. A separate read-only connection
 // avoids blocking writes and benefits from its own page cache.
 const readDb = new Database(DB_PATH, { readonly: true });
-readDb.pragma('journal_mode = WAL');
-readDb.pragma('cache_size = -32000');   // 32 MB read cache
-readDb.pragma('mmap_size = 268435456');
-readDb.pragma('temp_store = MEMORY');
+readDb.run('PRAGMA journal_mode = WAL');
+readDb.run('PRAGMA cache_size = -32000');   // 32 MB read cache
+readDb.run('PRAGMA mmap_size = 268435456');
+readDb.run('PRAGMA temp_store = MEMORY');
 
 // ── LRU Caches (hot-path reads) ───────────────────────────────
 const userCache = new LRUCache(500, 120_000);       // Users: 2 min TTL
 const conversationCache = new LRUCache(200, 60_000); // Conversations: 1 min TTL
 const roomCache = new LRUCache(100, 60_000);         // Rooms: 1 min TTL
 
-const agentRoomColumns = db.prepare(`PRAGMA table_info(agent_rooms)`).all();
+const agentRoomColumns = db.query(`PRAGMA table_info(agent_rooms)`).all();
 if (agentRoomColumns.length > 0 && !agentRoomColumns.some((column) => column.name === 'project_room_id')) {
   db.exec('ALTER TABLE agent_rooms ADD COLUMN project_room_id TEXT REFERENCES project_rooms(id) ON DELETE CASCADE');
 }
@@ -57,7 +58,7 @@ if (agentRoomColumns.length > 0 && !agentRoomColumns.some((column) => column.nam
 }
 
 // Migrate agent_room_messages: add artifacts column
-const msgColumns = db.prepare('PRAGMA table_info(agent_room_messages)').all();
+const msgColumns = db.query('PRAGMA table_info(agent_room_messages)').all();
 if (msgColumns.length > 0 && !msgColumns.some((c) => c.name === 'artifacts')) {
   db.exec('ALTER TABLE agent_room_messages ADD COLUMN artifacts TEXT DEFAULT NULL');
 }
@@ -76,30 +77,30 @@ export function uuid() {
 
 // Users
 const stmts = {
-  createUser: db.prepare(`
+  createUser: db.query(`
     INSERT INTO users (id, username, email, password_hash, display_name)
     VALUES (?, ?, ?, ?, ?)
   `),
-  findUserByUsername: readDb.prepare(`SELECT * FROM users WHERE username = ?`),
-  findUserByEmail: readDb.prepare(`SELECT * FROM users WHERE email = ?`),
-  findUserById: readDb.prepare(`SELECT * FROM users WHERE id = ?`),
-  findUserPublic: readDb.prepare(`SELECT id, username, display_name, avatar_url, created_at FROM users WHERE id = ?`),
-  updateDisplayName: db.prepare(`UPDATE users SET display_name = ?, updated_at = unixepoch() WHERE id = ?`),
-  updateAvatar: db.prepare(`UPDATE users SET avatar_url = ?, updated_at = unixepoch() WHERE id = ?`),
-  updatePassword: db.prepare(`UPDATE users SET password_hash = ?, updated_at = unixepoch() WHERE id = ?`),
+  findUserByUsername: readDb.query(`SELECT * FROM users WHERE username = ?`),
+  findUserByEmail: readDb.query(`SELECT * FROM users WHERE email = ?`),
+  findUserById: readDb.query(`SELECT * FROM users WHERE id = ?`),
+  findUserPublic: readDb.query(`SELECT id, username, display_name, avatar_url, created_at FROM users WHERE id = ?`),
+  updateDisplayName: db.query(`UPDATE users SET display_name = ?, updated_at = unixepoch() WHERE id = ?`),
+  updateAvatar: db.query(`UPDATE users SET avatar_url = ?, updated_at = unixepoch() WHERE id = ?`),
+  updatePassword: db.query(`UPDATE users SET password_hash = ?, updated_at = unixepoch() WHERE id = ?`),
 
   // Refresh tokens
-  saveRefreshToken: db.prepare(`
+  saveRefreshToken: db.query(`
     INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at)
     VALUES (?, ?, ?, ?)
   `),
-  findRefreshToken: readDb.prepare(`SELECT * FROM refresh_tokens WHERE token_hash = ? AND revoked = 0`),
-  revokeRefreshToken: db.prepare(`UPDATE refresh_tokens SET revoked = 1 WHERE id = ?`),
-  revokeAllUserTokens: db.prepare(`UPDATE refresh_tokens SET revoked = 1 WHERE user_id = ?`),
-  cleanupExpiredTokens: db.prepare(`DELETE FROM refresh_tokens WHERE expires_at < unixepoch() OR revoked = 1`),
+  findRefreshToken: readDb.query(`SELECT * FROM refresh_tokens WHERE token_hash = ? AND revoked = 0`),
+  revokeRefreshToken: db.query(`UPDATE refresh_tokens SET revoked = 1 WHERE id = ?`),
+  revokeAllUserTokens: db.query(`UPDATE refresh_tokens SET revoked = 1 WHERE user_id = ?`),
+  cleanupExpiredTokens: db.query(`DELETE FROM refresh_tokens WHERE expires_at < unixepoch() OR revoked = 1`),
 
   // Conversations
-  saveConversation: db.prepare(`
+  saveConversation: db.query(`
     INSERT INTO conversations (id, user_id, title, messages, folder_id, updated_at)
     VALUES (?, ?, ?, ?, ?, unixepoch())
     ON CONFLICT(id) DO UPDATE SET
@@ -108,40 +109,40 @@ const stmts = {
       folder_id = excluded.folder_id,
       updated_at = unixepoch()
   `),
-  getConversation: readDb.prepare(`SELECT * FROM conversations WHERE id = ?`),
-  getUserConversations: readDb.prepare(`
+  getConversation: readDb.query(`SELECT * FROM conversations WHERE id = ?`),
+  getUserConversations: readDb.query(`
     SELECT id, user_id, title, folder_id, is_shared, created_at, updated_at
     FROM conversations WHERE user_id = ? ORDER BY updated_at DESC
   `),
-  deleteConversation: db.prepare(`DELETE FROM conversations WHERE id = ? AND user_id = ?`),
-  updateConversationShare: db.prepare(`
+  deleteConversation: db.query(`DELETE FROM conversations WHERE id = ? AND user_id = ?`),
+  updateConversationShare: db.query(`
     UPDATE conversations SET is_shared = ?, share_token = ? WHERE id = ?
   `),
 
   // Shared chats
-  createSharedChat: db.prepare(`
+  createSharedChat: db.query(`
     INSERT INTO shared_chats (id, conversation_id, shared_by, share_token, access_level, expires_at)
     VALUES (?, ?, ?, ?, ?, ?)
   `),
-  getSharedChat: readDb.prepare(`
+  getSharedChat: readDb.query(`
     SELECT sc.*, c.title, c.messages, u.username AS shared_by_username
     FROM shared_chats sc
     JOIN conversations c ON c.id = sc.conversation_id
     JOIN users u ON u.id = sc.shared_by
     WHERE sc.share_token = ?
   `),
-  deleteSharedChat: db.prepare(`DELETE FROM shared_chats WHERE id = ? AND shared_by = ?`),
-  getConversationShares: readDb.prepare(`SELECT * FROM shared_chats WHERE conversation_id = ?`),
-  cleanupExpiredShares: db.prepare(`DELETE FROM shared_chats WHERE expires_at IS NOT NULL AND expires_at < unixepoch()`),
+  deleteSharedChat: db.query(`DELETE FROM shared_chats WHERE id = ? AND shared_by = ?`),
+  getConversationShares: readDb.query(`SELECT * FROM shared_chats WHERE conversation_id = ?`),
+  cleanupExpiredShares: db.query(`DELETE FROM shared_chats WHERE expires_at IS NOT NULL AND expires_at < unixepoch()`),
 
   // Project rooms
-  createProjectRoom: db.prepare(`
+  createProjectRoom: db.query(`
     INSERT INTO project_rooms (id, name, description, category, owner_id, invite_code)
     VALUES (?, ?, ?, ?, ?, ?)
   `),
-  getProjectRoom: readDb.prepare(`SELECT * FROM project_rooms WHERE id = ?`),
-  getRoomByInviteCode: readDb.prepare(`SELECT * FROM project_rooms WHERE invite_code = ? AND is_active = 1`),
-  getUserRooms: readDb.prepare(`
+  getProjectRoom: readDb.query(`SELECT * FROM project_rooms WHERE id = ?`),
+  getRoomByInviteCode: readDb.query(`SELECT * FROM project_rooms WHERE invite_code = ? AND is_active = 1`),
+  getUserRooms: readDb.query(`
     SELECT pr.*, rm.role, rm.joined_at,
       (SELECT COUNT(*) FROM room_members WHERE room_id = pr.id) AS member_count
     FROM project_rooms pr
@@ -149,29 +150,29 @@ const stmts = {
     WHERE rm.user_id = ? AND pr.is_active = 1
     ORDER BY rm.joined_at DESC
   `),
-  deleteProjectRoom: db.prepare(`UPDATE project_rooms SET is_active = 0 WHERE id = ? AND owner_id = ?`),
+  deleteProjectRoom: db.query(`UPDATE project_rooms SET is_active = 0 WHERE id = ? AND owner_id = ?`),
 
   // Room members
-  addRoomMember: db.prepare(`
+  addRoomMember: db.query(`
     INSERT OR IGNORE INTO room_members (room_id, user_id, role) VALUES (?, ?, ?)
   `),
-  removeRoomMember: db.prepare(`DELETE FROM room_members WHERE room_id = ? AND user_id = ?`),
-  getRoomMembers: readDb.prepare(`
+  removeRoomMember: db.query(`DELETE FROM room_members WHERE room_id = ? AND user_id = ?`),
+  getRoomMembers: readDb.query(`
     SELECT rm.*, u.username, u.display_name, u.avatar_url
     FROM room_members rm
     JOIN users u ON u.id = rm.user_id
     WHERE rm.room_id = ?
     ORDER BY rm.joined_at ASC
   `),
-  isRoomMember: readDb.prepare(`SELECT 1 FROM room_members WHERE room_id = ? AND user_id = ?`),
-  getRoomMemberRole: readDb.prepare(`SELECT role FROM room_members WHERE room_id = ? AND user_id = ?`),
+  isRoomMember: readDb.query(`SELECT 1 FROM room_members WHERE room_id = ? AND user_id = ?`),
+  getRoomMemberRole: readDb.query(`SELECT role FROM room_members WHERE room_id = ? AND user_id = ?`),
 
   // Room messages
-  saveRoomMessage: db.prepare(`
+  saveRoomMessage: db.query(`
     INSERT INTO room_messages (id, room_id, user_id, content, message_type)
     VALUES (?, ?, ?, ?, ?)
   `),
-  getRoomMessages: readDb.prepare(`
+  getRoomMessages: readDb.query(`
     SELECT rm.*, u.username, u.display_name, u.avatar_url
     FROM room_messages rm
     JOIN users u ON u.id = rm.user_id
@@ -179,7 +180,7 @@ const stmts = {
     ORDER BY rm.created_at DESC
     LIMIT ?
   `),
-  getLatestRoomMessages: readDb.prepare(`
+  getLatestRoomMessages: readDb.query(`
     SELECT rm.*, u.username, u.display_name, u.avatar_url
     FROM room_messages rm
     JOIN users u ON u.id = rm.user_id
@@ -189,19 +190,19 @@ const stmts = {
   `),
 
   // Agent rooms
-  createAgentRoom: db.prepare(`
+  createAgentRoom: db.query(`
     INSERT INTO agent_rooms (
       id, owner_id, project_room_id, name, description, workspace_id, workspace_path, orchestration_mode, autonomy_level
     )
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `),
-  getAgentRoom: readDb.prepare(`SELECT * FROM agent_rooms WHERE id = ? AND is_active = 1`),
-  getAgentRoomForUser: readDb.prepare(`SELECT * FROM agent_rooms WHERE id = ? AND owner_id = ? AND is_active = 1`),
-  getAgentRoomByProjectRoomId: readDb.prepare(`
+  getAgentRoom: readDb.query(`SELECT * FROM agent_rooms WHERE id = ? AND is_active = 1`),
+  getAgentRoomForUser: readDb.query(`SELECT * FROM agent_rooms WHERE id = ? AND owner_id = ? AND is_active = 1`),
+  getAgentRoomByProjectRoomId: readDb.query(`
     SELECT * FROM agent_rooms
     WHERE project_room_id = ? AND is_active = 1
   `),
-  listAgentRoomsByOwner: readDb.prepare(`
+  listAgentRoomsByOwner: readDb.query(`
     SELECT ar.*,
       (SELECT COUNT(*) FROM agent_room_agents ara WHERE ara.room_id = ar.id) AS agent_count,
       (SELECT COUNT(*) FROM agent_room_messages arm WHERE arm.room_id = ar.id) AS message_count
@@ -209,48 +210,48 @@ const stmts = {
     WHERE ar.owner_id = ? AND ar.is_active = 1
     ORDER BY ar.updated_at DESC
   `),
-  touchAgentRoom: db.prepare(`UPDATE agent_rooms SET updated_at = unixepoch() WHERE id = ?`),
-  updateAgentRoomConfig: db.prepare(`
+  touchAgentRoom: db.query(`UPDATE agent_rooms SET updated_at = unixepoch() WHERE id = ?`),
+  updateAgentRoomConfig: db.query(`
     UPDATE agent_rooms
     SET orchestration_mode = ?, autonomy_level = ?, updated_at = unixepoch()
     WHERE id = ?
   `),
-  deleteAgentRoom: db.prepare(`UPDATE agent_rooms SET is_active = 0, updated_at = unixepoch() WHERE id = ? AND owner_id = ?`),
+  deleteAgentRoom: db.query(`UPDATE agent_rooms SET is_active = 0, updated_at = unixepoch() WHERE id = ? AND owner_id = ?`),
 
   // Agent room agents
-  createAgentRoomAgent: db.prepare(`
+  createAgentRoomAgent: db.query(`
     INSERT INTO agent_room_agents (id, room_id, name, role, model_tier, system_prompt, tools_json, provider_config_json)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `),
-  listAgentRoomAgents: readDb.prepare(`
+  listAgentRoomAgents: readDb.query(`
     SELECT * FROM agent_room_agents
     WHERE room_id = ?
     ORDER BY created_at ASC
   `),
-  getAgentRoomAgent: readDb.prepare(`
+  getAgentRoomAgent: readDb.query(`
     SELECT * FROM agent_room_agents
     WHERE room_id = ? AND name = ?
   `),
-  updateAgentRoomAgentStatus: db.prepare(`
+  updateAgentRoomAgentStatus: db.query(`
     UPDATE agent_room_agents
     SET status = ?, updated_at = unixepoch()
     WHERE room_id = ? AND name = ?
   `),
-  updateAgentRoomAgent: db.prepare(`
+  updateAgentRoomAgent: db.query(`
     UPDATE agent_room_agents
     SET role = ?, model_tier = ?, system_prompt = ?, tools_json = ?, provider_config_json = ?, updated_at = unixepoch()
     WHERE room_id = ? AND name = ?
   `),
-  deleteAgentRoomAgent: db.prepare(`
+  deleteAgentRoomAgent: db.query(`
     DELETE FROM agent_room_agents WHERE room_id = ? AND name = ?
   `),
 
   // Agent room messages
-  saveAgentRoomMessage: db.prepare(`
+  saveAgentRoomMessage: db.query(`
     INSERT INTO agent_room_messages (id, room_id, sender_type, sender_name, content, event_type, artifacts)
     VALUES (?, ?, ?, ?, ?, ?, ?)
   `),
-  listAgentRoomMessages: readDb.prepare(`
+  listAgentRoomMessages: readDb.query(`
     SELECT * FROM agent_room_messages
     WHERE room_id = ?
     ORDER BY created_at DESC, rowid DESC
@@ -258,35 +259,35 @@ const stmts = {
   `),
 
   // Agent room memories
-  getAgentRoomMemory: readDb.prepare(`
+  getAgentRoomMemory: readDb.query(`
     SELECT memory_text, updated_at
     FROM agent_room_memories
     WHERE room_id = ? AND agent_name = ?
   `),
-  saveAgentRoomMemory: db.prepare(`
+  saveAgentRoomMemory: db.query(`
     INSERT INTO agent_room_memories (room_id, agent_name, memory_text, updated_at)
     VALUES (?, ?, ?, unixepoch())
     ON CONFLICT(room_id, agent_name) DO UPDATE SET
       memory_text = excluded.memory_text,
       updated_at = unixepoch()
   `),
-  listAgentRoomMemories: readDb.prepare(`
+  listAgentRoomMemories: readDb.query(`
     SELECT agent_name, memory_text, updated_at
     FROM agent_room_memories
     WHERE room_id = ?
     ORDER BY updated_at DESC
   `),
-  clearAgentRoomMemory: db.prepare(`
+  clearAgentRoomMemory: db.query(`
     DELETE FROM agent_room_memories
     WHERE room_id = ? AND agent_name = ?
   `),
 
   // Agent room token usage
-  saveAgentRoomTokenUsage: db.prepare(`
+  saveAgentRoomTokenUsage: db.query(`
     INSERT INTO agent_room_token_usage (id, room_id, agent_name, prompt_tokens, completion_tokens, total_tokens, model, provider)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `),
-  getAgentRoomTokenSummary: db.prepare(`
+  getAgentRoomTokenSummary: db.query(`
     SELECT agent_name,
            SUM(prompt_tokens) AS prompt_tokens,
            SUM(completion_tokens) AS completion_tokens,
@@ -297,7 +298,7 @@ const stmts = {
     GROUP BY agent_name
     ORDER BY total_tokens DESC
   `),
-  getAgentRoomTokenHistory: db.prepare(`
+  getAgentRoomTokenHistory: db.query(`
     SELECT id, agent_name, prompt_tokens, completion_tokens, total_tokens, model, provider, created_at
     FROM agent_room_token_usage
     WHERE room_id = ?
@@ -306,11 +307,11 @@ const stmts = {
   `),
 
   // Agent room logs
-  saveAgentRoomLog: db.prepare(`
+  saveAgentRoomLog: db.query(`
     INSERT INTO agent_room_logs (id, room_id, agent_name, level, message, meta_json)
     VALUES (?, ?, ?, ?, ?, ?)
   `),
-  listAgentRoomLogs: db.prepare(`
+  listAgentRoomLogs: db.query(`
     SELECT * FROM agent_room_logs
     WHERE room_id = ?
     ORDER BY created_at DESC
@@ -318,11 +319,11 @@ const stmts = {
   `),
 
   // Agent room tasks
-  createAgentRoomTask: db.prepare(`
+  createAgentRoomTask: db.query(`
     INSERT INTO agent_room_tasks (id, room_id, title, details, status, priority, assignee_name, created_by)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `),
-  listAgentRoomTasks: db.prepare(`
+  listAgentRoomTasks: db.query(`
     SELECT * FROM agent_room_tasks
     WHERE room_id = ?
     ORDER BY
@@ -340,22 +341,22 @@ const stmts = {
       updated_at DESC,
       created_at DESC
   `),
-  getAgentRoomTask: db.prepare(`
+  getAgentRoomTask: db.query(`
     SELECT * FROM agent_room_tasks
     WHERE room_id = ? AND id = ?
   `),
-  updateAgentRoomTask: db.prepare(`
+  updateAgentRoomTask: db.query(`
     UPDATE agent_room_tasks
     SET title = ?, details = ?, status = ?, priority = ?, assignee_name = ?, updated_at = unixepoch()
     WHERE room_id = ? AND id = ?
   `),
 
   // Agent room file review gates
-  getAgentRoomFileReview: db.prepare(`
+  getAgentRoomFileReview: db.query(`
     SELECT * FROM agent_room_file_reviews
     WHERE room_id = ? AND file_path = ?
   `),
-  upsertAgentRoomFileReview: db.prepare(`
+  upsertAgentRoomFileReview: db.query(`
     INSERT INTO agent_room_file_reviews (room_id, file_path, status, summary, updated_by)
     VALUES (?, ?, ?, ?, ?)
     ON CONFLICT(room_id, file_path) DO UPDATE SET
@@ -366,35 +367,35 @@ const stmts = {
   `),
 
   // Workspace snapshots
-  createSnapshot: db.prepare(`
+  createSnapshot: db.query(`
     INSERT INTO agent_room_snapshots (id, room_id, label, description, file_count, total_size, snapshot_data, created_by)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `),
-  listSnapshots: db.prepare(`
+  listSnapshots: db.query(`
     SELECT id, room_id, label, description, file_count, total_size, created_by, created_at
     FROM agent_room_snapshots
     WHERE room_id = ?
     ORDER BY created_at DESC
     LIMIT ?
   `),
-  getSnapshot: db.prepare(`
+  getSnapshot: db.query(`
     SELECT * FROM agent_room_snapshots
     WHERE room_id = ? AND id = ?
   `),
-  deleteSnapshot: db.prepare(`
+  deleteSnapshot: db.query(`
     DELETE FROM agent_room_snapshots
     WHERE room_id = ? AND id = ?
   `),
 
   // ── Room Skills ──────────────────────────────────────────────
-  addRoomSkill: db.prepare(`
+  addRoomSkill: db.query(`
     INSERT OR IGNORE INTO agent_room_skills (id, room_id, skill_id, added_by)
     VALUES (?, ?, ?, ?)
   `),
-  removeRoomSkill: db.prepare(`
+  removeRoomSkill: db.query(`
     DELETE FROM agent_room_skills WHERE room_id = ? AND skill_id = ?
   `),
-  listRoomSkills: db.prepare(`
+  listRoomSkills: db.query(`
     SELECT skill_id, added_by, added_at FROM agent_room_skills
     WHERE room_id = ? ORDER BY added_at ASC
   `),

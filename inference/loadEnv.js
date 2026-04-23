@@ -1,3 +1,8 @@
+/**
+ * Environment variable loader.
+ * Bun natively loads .env files — this module ensures the correct .env path
+ * is loaded and provides a fallback for non-Bun runtimes.
+ */
 import { existsSync, readFileSync } from 'fs';
 import path from 'path';
 import process from 'process';
@@ -41,6 +46,8 @@ function loadEnvFileFallback(envPath) {
   }
 }
 
+// Bun auto-loads .env from cwd, but our .env is in the parent directory.
+// Explicitly load it to ensure correct path resolution.
 if (typeof process.loadEnvFile === 'function') {
   try {
     process.loadEnvFile(ENV_PATH);
