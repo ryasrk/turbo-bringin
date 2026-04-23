@@ -711,7 +711,7 @@ export async function sendToAPI() {
           persistCurrentConversation();
           _refreshSidebar?.();
         }
-      });
+      }).catch(() => { /* title generation is best-effort */ });
     }
   }
 }

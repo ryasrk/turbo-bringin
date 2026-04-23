@@ -326,6 +326,6 @@ export function regenerateLastResponse() {
   const lastUserMsg = state.messages[state.messages.length - 1];
   if (lastUserMsg?.role === 'user') {
     // Imported lazily to avoid circular reference at module evaluation time
-    import('./chatApi.js').then(({ sendToAPI }) => sendToAPI());
+    import('./chatApi.js').then(({ sendToAPI }) => sendToAPI()).catch(() => { /* module load failure is non-recoverable */ });
   }
 }

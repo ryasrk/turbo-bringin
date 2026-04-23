@@ -114,7 +114,7 @@ export function processImportShare(encoded) {
   conv.messages = data.messages.map((m) => ({
     role: m.role, content: m.content, timestamp: m.timestamp || ts,
   }));
-  saveConversation(conv).then(() => _loadConversationById?.(conv.id));
+  saveConversation(conv).then(() => _loadConversationById?.(conv.id)).catch(() => showToast('Failed to import shared conversation', 'error'));
 }
 
 export function checkShareUrl() {
@@ -131,5 +131,5 @@ export function checkShareUrl() {
   saveConversation(conv).then(() => {
     _loadConversationById?.(conv.id);
     history.replaceState(null, '', location.pathname);
-  });
+  }).catch(() => showToast('Failed to import shared conversation', 'error'));
 }

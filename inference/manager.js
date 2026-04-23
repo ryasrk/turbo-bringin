@@ -479,9 +479,12 @@ function streamUpstreamToSink(params, sink) {
   let upstreamResponse = null;
   let streamBuffer = '';
   let completed = false;
+  const activeIntervals = new Set();
 
   const cleanupUpstream = () => {
     streamBuffer = '';
+    for (const iv of activeIntervals) clearInterval(iv);
+    activeIntervals.clear();
     if (upstreamResponse) { upstreamResponse.destroy(); upstreamResponse = null; }
     if (upstreamRequest) { upstreamRequest.destroy(); upstreamRequest = null; }
   };
@@ -526,9 +529,11 @@ function streamUpstreamToSink(params, sink) {
         const checkResume = setInterval(() => {
           if (!sink.shouldPause || !sink.shouldPause()) {
             clearInterval(checkResume);
+            activeIntervals.delete(checkResume);
             if (upstreamResponse) res.resume();
           }
         }, 50);
+        activeIntervals.add(checkResume);
       }
 
       const { lines, buffer } = splitSseLines(streamBuffer, chunk);
@@ -1077,9 +1082,11 @@ const controlServer = createServer(async (req, res) => {
     }
 
     let rawBody = '';
+    let bodyRejected = false;
     req.on('data', (chunk) => {
       rawBody += chunk;
       if (rawBody.length > 256 * 1024) {
+        bodyRejected = true;
         res.writeHead(413, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Payload too large' }));
         req.destroy();
@@ -1087,6 +1094,7 @@ const controlServer = createServer(async (req, res) => {
     });
 
     req.on('end', () => {
+      if (bodyRejected) return;
       let params;
       try {
         params = JSON.parse(rawBody);

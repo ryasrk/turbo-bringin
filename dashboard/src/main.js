@@ -202,7 +202,8 @@ document.querySelectorAll('.settings-tab').forEach((tab) => {
     document.querySelectorAll('.settings-tab').forEach((t) => t.classList.remove('active'));
     document.querySelectorAll('.settings-panel').forEach((p) => (p.hidden = true));
     tab.classList.add('active');
-    document.querySelector(`[data-panel="${tab.dataset.tab}"]`).hidden = false;
+    const panel = document.querySelector(`[data-panel="${tab.dataset.tab}"]`);
+    if (panel) panel.hidden = false;
     if (tab.dataset.tab === 'locale') updateLocalePreview();
   });
 });

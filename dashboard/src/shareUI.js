@@ -67,7 +67,7 @@ export function createShareModal() {
     const expiresHours = modal.querySelector('#share-expires').value || null;
 
     try {
-      const data = await createShareLink(convId, accessLevel, expiresHours ? parseInt(expiresHours) : null);
+      const data = await createShareLink(convId, accessLevel, expiresHours ? parseInt(expiresHours, 10) : null);
       const shareUrl = `${window.location.origin}/shared/${data.share_token}`;
 
       const resultEl = modal.querySelector('#share-result');

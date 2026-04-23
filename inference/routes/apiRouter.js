@@ -33,21 +33,24 @@ export function sendJson(res, statusCode, data, extraHeaders = {}) {
 export function readBody(req, maxSize = 256 * 1024) {
   return new Promise((resolve, reject) => {
     let body = '';
+    let settled = false;
+    const safeReject = (err) => { if (!settled) { settled = true; reject(err); } };
+    const safeResolve = (val) => { if (!settled) { settled = true; resolve(val); } };
     req.on('data', (chunk) => {
       body += chunk;
       if (body.length > maxSize) {
-        reject(new Error('Payload too large'));
+        safeReject(new Error('Payload too large'));
         req.destroy();
       }
     });
     req.on('end', () => {
       try {
-        resolve(body ? JSON.parse(body) : {});
+        safeResolve(body ? JSON.parse(body) : {});
       } catch {
-        reject(new Error('Invalid JSON'));
+        safeReject(new Error('Invalid JSON'));
       }
     });
-    req.on('error', reject);
+    req.on('error', (err) => safeReject(err));
   });
 }
 

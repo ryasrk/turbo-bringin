@@ -82,7 +82,7 @@ export function renderAttachedFiles() {
 
   container.querySelectorAll('.remove-file').forEach((btn) => {
     btn.addEventListener('click', () => {
-      state.attachedFiles.splice(parseInt(btn.dataset.idx), 1);
+      state.attachedFiles.splice(parseInt(btn.dataset.idx, 10), 1);
       renderAttachedFiles();
     });
   });
