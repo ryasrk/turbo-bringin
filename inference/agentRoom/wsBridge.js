@@ -1,9 +1,24 @@
 import { WebSocketServer } from 'ws';
+import { encode as msgpackEncode } from '@msgpack/msgpack';
 
 import { verifyAccessToken } from '../auth/auth.js';
 import { canAccessAgentRoom, findUserById, getAgentRoom } from '../db/database.js';
 
-const agentRoomWss = new WebSocketServer({ noServer: true, maxPayload: 128 * 1024 });
+const agentRoomWss = new WebSocketServer({
+  noServer: true,
+  maxPayload: 128 * 1024,
+  handleProtocols(protocols) {
+    // Prefer msgpack if client supports it, otherwise no subprotocol
+    if (protocols.has(MSGPACK_SUBPROTOCOL)) return MSGPACK_SUBPROTOCOL;
+    return false;
+  },
+});
+
+// ── MessagePack Protocol ───────────────────────────────────────
+// Clients that request the 'msgpack' subprotocol receive binary MessagePack
+// frames instead of JSON text frames. This reduces payload size ~40% and
+// encode/decode time ~2-5× compared to JSON.stringify/parse.
+const MSGPACK_SUBPROTOCOL = 'msgpack';
 const roomSockets = new Map();
 const roomUserSocketCounts = new Map();
 const DASHBOARD_ORIGIN = process.env.DASHBOARD_ORIGIN || '';
@@ -36,7 +51,11 @@ function isAllowedDashboardOrigin(origin) {
 function wsSend(ws, payload) {
   if (ws.readyState !== ws.OPEN) return;
   try {
-    ws.send(JSON.stringify(payload));
+    if (ws._useMsgpack) {
+      ws.send(msgpackEncode(payload));
+    } else {
+      ws.send(JSON.stringify(payload));
+    }
   } catch {
     // Ignore broken sockets.
   }
@@ -69,14 +88,25 @@ export function broadcastAgentRoomEvent(roomId, type, payload = {}) {
   const sockets = roomSockets.get(roomId);
   if (!sockets || sockets.size === 0) return;
 
-  const message = JSON.stringify({ type, room_id: roomId, ...payload });
+  const data = { type, room_id: roomId, ...payload };
+
+  // Pre-encode once per format to avoid re-encoding per socket
+  let jsonMsg = null;
+  let binaryMsg = null;
+
   for (const ws of sockets) {
     if (ws.readyState !== ws.OPEN) {
       removeSocket(roomId, ws);
       continue;
     }
     try {
-      ws.send(message);
+      if (ws._useMsgpack) {
+        if (!binaryMsg) binaryMsg = msgpackEncode(data);
+        ws.send(binaryMsg);
+      } else {
+        if (!jsonMsg) jsonMsg = JSON.stringify(data);
+        ws.send(jsonMsg);
+      }
     } catch {
       removeSocket(roomId, ws);
     }
@@ -92,6 +122,8 @@ agentRoomWss.on('connection', (ws, req, client) => {
     return;
   }
 
+  // Detect MessagePack subprotocol negotiation (set by handleProtocols)
+  ws._useMsgpack = ws._protocol === MSGPACK_SUBPROTOCOL;
   ws._agentRoomUserId = client.user.id;
   roomUserSocketCounts.set(countKey, currentCount + 1);
   addSocket(roomId, ws);
