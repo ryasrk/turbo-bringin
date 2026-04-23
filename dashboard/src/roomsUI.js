@@ -415,38 +415,30 @@ export function createRoomsView() {
               </div>
           </div>
 
-          <!-- Tab: Model & Provider -->
+          <!-- Tab: Model (xb) — deep work model for ReAct tool loop -->
           <div class="agent-config-tab-panel" data-tab-panel="provider">
-              <div class="form-group">
-                <label for="agent-tier-input">Fallback Tier</label>
-                <select id="agent-tier-input">
-                  <option value="brain">Brain (strongest, for planning/architecture)</option>
-                  <option value="worker" selected>Worker (balanced, for implementation)</option>
-                  <option value="cheap_worker">Cheap Worker (fast, for summaries/docs)</option>
-                </select>
-                <small class="form-hint">Used when no custom provider is set.</small>
-              </div>
+              <input type="hidden" id="agent-tier-input" value="worker" />
+              <p class="form-hint" style="margin-bottom:8px">
+                The deep-work model (xb) handles tool calling, code generation, and complex reasoning.
+              </p>
               <div class="form-group">
                 <label for="agent-provider-input">Provider</label>
                 <select id="agent-provider-input">
                   <option value="tier" selected>Use Tier Default</option>
                   <option value="enowxai">EnowxAI (Gateway)</option>
-                  <option value="local">Local (Bonsai-8B / llama-server)</option>
+                  <option value="local">Local (llama-server / Ollama)</option>
                   <option value="openai">OpenAI</option>
                   <option value="anthropic">Anthropic</option>
                   <option value="custom">Custom (OpenAI-compatible)</option>
                 </select>
-                <small class="form-hint">Override the tier with a specific provider.</small>
-              </div>
-              <div class="form-group" id="agent-api-key-group" style="display:none">
-                <label for="agent-api-key-input">API Key</label>
-                <input type="password" id="agent-api-key-input" placeholder="sk-..." autocomplete="off" />
-                <small class="form-hint">Stored per-agent. Only sent to the selected provider.</small>
               </div>
               <div class="form-group" id="agent-base-url-group" style="display:none">
                 <label for="agent-base-url-input">Base URL</label>
                 <input type="url" id="agent-base-url-input" placeholder="https://your-endpoint.com" />
-                <small class="form-hint">OpenAI-compatible endpoint URL.</small>
+              </div>
+              <div class="form-group" id="agent-api-key-group" style="display:none">
+                <label for="agent-api-key-input">API Key</label>
+                <input type="password" id="agent-api-key-input" placeholder="sk-..." autocomplete="off" />
               </div>
               <div class="form-group" id="agent-model-select-group" style="display:none">
                 <label for="agent-model-select-input">Model</label>
