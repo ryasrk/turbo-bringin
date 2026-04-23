@@ -1188,8 +1188,10 @@ export function closeRoomChat() {
 
 export function cleanupRooms() {
   if (rs.roomPollTimer) { clearInterval(rs.roomPollTimer); rs.roomPollTimer = null; }
+  if (rs.agentRoomReconnectTimer) { clearTimeout(rs.agentRoomReconnectTimer); rs.agentRoomReconnectTimer = null; }
   closeAgentSocket();
   resetAgentRoomSidebar();
+  showAgentSidebar(false);
   rs.currentRoomId = null;
   rs.currentRoomMode = 'team';
   rs.currentAgentRoomId = null;
@@ -1198,6 +1200,23 @@ export function cleanupRooms() {
   rs.selectedListRoomId = null;
   rs.seenMessageIds.clear();
   hideMentionMenu();
+  clearAllTypingIndicators();
+
+  // Reset DOM state so returning to Rooms tab shows the rooms list, not a stale chat
+  const roomsPage = rs.panel?.querySelector('.rooms-page');
+  const roomChat = rs.panel?.querySelector('#room-chat');
+  const roomNote = rs.panel?.querySelector('#room-chat-note');
+  const roomBots = rs.panel?.querySelector('#room-ai-bots');
+  const workspaceView = rs.panel?.querySelector('#room-workspace');
+  const roomAiPage = rs.panel?.querySelector('#room-ai-page');
+  const roomAiBtn = rs.panel?.querySelector('#room-ai-btn');
+  if (roomsPage) roomsPage.hidden = false;
+  if (roomChat) roomChat.hidden = true;
+  if (workspaceView) workspaceView.hidden = true;
+  if (roomAiPage) roomAiPage.hidden = true;
+  if (roomAiBtn) roomAiBtn.hidden = true;
+  if (roomNote) { roomNote.hidden = true; roomNote.textContent = ''; }
+  if (roomBots) { roomBots.hidden = true; roomBots.innerHTML = ''; }
 }
 
 function showRoomAiPage() {

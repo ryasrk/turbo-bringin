@@ -555,17 +555,22 @@ export async function sendToAPI() {
             try { msg = JSON.parse(data); } catch { continue; }
             if (msg.type === 'queued') {
               const queuePos = getQueuePosition(msg.position);
+              _streamSM?.transition(StreamState.QUEUED, queuePos);
               contentEl.innerHTML = queuePos
                 ? `<div class="queue-status"><span class="queue-icon">⏳</span><span class="queue-label">Queued</span><span class="queue-badge">#${queuePos}</span></div>`
                 : `<div class="queue-status"><span class="queue-icon">⏳</span><span class="queue-label">Queued</span></div>`;
             } else if (msg.type === 'delta' && msg.delta) {
+              if (_streamSM?.state !== StreamState.STREAMING) _streamSM?.transition(StreamState.STREAMING);
               if (msg.channel === 'reasoning') reasoningContent += msg.delta;
               else fullContent += msg.delta;
               tokenCount++;
+              _streamSM?.recordToken();
               scheduleRender();
             } else if (msg.type === 'done') {
+              _streamSM?.transition(StreamState.FINALIZING);
               renderStream(false); break;
             } else if (msg.type === 'error') {
+              _streamSM?.transition(StreamState.ERROR, new Error(msg.message || 'SSE stream failed.'));
               throw new Error(msg.message || 'SSE stream failed.');
             }
           }
@@ -624,8 +629,9 @@ export async function sendToAPI() {
       pinBtn.className = 'pin-msg-btn'; pinBtn.title = 'Pin message'; pinBtn.textContent = '📌';
       pinBtn.addEventListener('click', () => {
         streamEl.classList.toggle('pinned');
-        const idx = Array.from(messagesEl.children).indexOf(streamEl);
-        if (idx >= 0 && state.messages[idx]) state.messages[idx].pinned = streamEl.classList.contains('pinned');
+        pinBtn.classList.toggle('active');
+        const msgRef = streamEl._msgRef;
+        if (msgRef) msgRef.pinned = streamEl.classList.contains('pinned');
       });
       metaEl.appendChild(pinBtn);
     }
@@ -638,15 +644,16 @@ export async function sendToAPI() {
         btn.addEventListener('click', () => {
           const isActive = btn.classList.contains('active');
           streamEl.querySelectorAll('.reaction-btn').forEach((b) => b.classList.remove('active'));
-          const idx = Array.from(messagesEl.children).indexOf(streamEl);
-          if (!isActive) { btn.classList.add('active'); if (idx >= 0 && state.messages[idx]) state.messages[idx].reaction = reaction; }
-          else { if (idx >= 0 && state.messages[idx]) delete state.messages[idx].reaction; }
+          const msgRef = streamEl._msgRef;
+          if (!isActive) { btn.classList.add('active'); if (msgRef) msgRef.reaction = reaction; }
+          else { if (msgRef) delete msgRef.reaction; }
         });
         metaEl.appendChild(btn);
       });
     }
 
     const newMsg = { role: 'assistant', content: fullContent, timestamp: Date.now(), stats: statsHtml };
+    streamEl._msgRef = newMsg;
     if (state._pendingBranches) {
       newMsg.branches = [...state._pendingBranches, { content: fullContent, stats: statsHtml, timestamp: Date.now() }];
       newMsg.activeBranch = newMsg.branches.length - 1;
@@ -694,9 +701,11 @@ export async function sendToAPI() {
 
     if (state._pendingAutoTitle) {
       const msgText = state._pendingAutoTitle;
+      const titleConvId = state.conversationId;
       state._pendingAutoTitle = null;
       generateTitleViaLLM(msgText).then((llmTitle) => {
-        if (llmTitle && state.conversationId) {
+        // Guard: only apply title if user hasn't switched conversations
+        if (llmTitle && state.conversationId === titleConvId) {
           const conv = getActiveConversation();
           if (conv) conv.title = llmTitle;
           persistCurrentConversation();

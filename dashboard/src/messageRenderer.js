@@ -207,10 +207,10 @@ export function createMessageEl(role, content, stats = null, images = [], msgDat
       try {
         await navigator.clipboard.writeText(text);
         copyMsgBtn.textContent = '✅';
-        setTimeout(() => { copyMsgBtn.textContent = 'Copy'; }, 2000);
+        setTimeout(() => { copyMsgBtn.textContent = '📋 Copy'; }, 2000);
       } catch {
         copyMsgBtn.textContent = '❌';
-        setTimeout(() => { copyMsgBtn.textContent = 'Copy'; }, 2000);
+        setTimeout(() => { copyMsgBtn.textContent = '📋 Copy'; }, 2000);
       }
     });
   }
@@ -218,12 +218,12 @@ export function createMessageEl(role, content, stats = null, images = [], msgDat
   // Pin button
   const pinBtn = div.querySelector('.pin-msg-btn');
   if (pinBtn) {
+    if (msgData.pinned) pinBtn.classList.add('active');
     pinBtn.addEventListener('click', () => {
       div.classList.toggle('pinned');
-      const idx = Array.from(messagesEl.children).indexOf(div);
-      if (idx >= 0 && state.messages[idx]) {
-        state.messages[idx].pinned = div.classList.contains('pinned');
-      }
+      pinBtn.classList.toggle('active');
+      const msgRef = div._msgRef;
+      if (msgRef) msgRef.pinned = div.classList.contains('pinned');
     });
   }
 
@@ -231,14 +231,14 @@ export function createMessageEl(role, content, stats = null, images = [], msgDat
   div.querySelectorAll('.reaction-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
       const reaction = btn.dataset.reaction;
-      const idx = Array.from(messagesEl.children).indexOf(div);
+      const msgRef = div._msgRef;
       const isActive = btn.classList.contains('active');
       div.querySelectorAll('.reaction-btn').forEach((b) => b.classList.remove('active'));
       if (!isActive) {
         btn.classList.add('active');
-        if (idx >= 0 && state.messages[idx]) state.messages[idx].reaction = reaction;
+        if (msgRef) msgRef.reaction = reaction;
       } else {
-        if (idx >= 0 && state.messages[idx]) delete state.messages[idx].reaction;
+        if (msgRef) delete msgRef.reaction;
       }
     });
   });
@@ -247,6 +247,9 @@ export function createMessageEl(role, content, stats = null, images = [], msgDat
     const activeBtn = div.querySelector(`.reaction-btn[data-reaction="${msgData.reaction}"]`);
     if (activeBtn) activeBtn.classList.add('active');
   }
+
+  // Store direct reference to message object for index-free lookups
+  div._msgRef = msgData;
 
   addBranchNavToEl(div, msgData);
   return div;

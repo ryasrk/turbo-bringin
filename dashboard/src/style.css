@@ -1418,7 +1418,7 @@ summary:focus-visible {
   border-radius: var(--radius-sm);
   max-height: 200px;
   overflow-y: auto;
-  z-index: 20;
+  z-index: 150;
 }
 .command-item {
   padding: 8px 12px;
