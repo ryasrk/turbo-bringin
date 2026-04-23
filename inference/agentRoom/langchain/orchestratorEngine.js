@@ -17,7 +17,8 @@ import {
 } from '../../db/database.js';
 import { listFiles } from '../fileTools.js';
 import { broadcastAgentRoomEvent } from '../wsBridge.js';
-import { runReactiveAgentTurn, runSimpleAgentTurn, shouldAgentRespond, isSimpleQuery, classifyWithRouter } from './reactiveAgent.js';
+import { runReactiveAgentTurn, runSimpleAgentTurn, runProgressCheckTurn, shouldAgentRespond, isSimpleQuery, classifyWithRouter } from './reactiveAgent.js';
+import { startXbTask, updateXbStep, recordXbToolCall, completeXbTask, failXbTask, cleanupXbTasks } from '../progressStore.js';
 
 const DEFAULT_AUTONOMY_LEVEL = 2;
 const MAX_VISIBLE_HISTORY = 40;
@@ -271,6 +272,10 @@ export class LangChainAgentRoomOrchestrator extends EventEmitter {
     this.roomQueues = new Map();
     /** @type {Map<string, {resolve: Function, reject: Function}>} roomId → pending decision */
     this.pendingReworkDecisions = new Map();
+
+    // Periodic cleanup of old xb progress entries (every 5 minutes)
+    this._cleanupInterval = setInterval(() => cleanupXbTasks(), 5 * 60 * 1000);
+    if (this._cleanupInterval.unref) this._cleanupInterval.unref();
   }
 
   /**
@@ -565,48 +570,61 @@ export class LangChainAgentRoomOrchestrator extends EventEmitter {
       const allowedSkillIds = roomSkills.map((s) => s.skill_id);
 
       // ── xa Router Classification ──────────────────────────────
-      // Use the xa (router) model to classify: CHAT → fast-path, DELEGATE → full ReAct.
+      // Use the xa (router) model to classify: CHAT → fast-path, PROGRESS → report, DELEGATE → full ReAct.
       // Falls back to JS heuristic if no router_config is set.
-      const classification = await classifyWithRouter(agent, triggerContent);
+      const classification = await classifyWithRouter(agent, triggerContent, roomId);
       const useSimplePath = classification === 'chat';
+      const useProgressPath = classification === 'progress';
 
-      if (useSimplePath) {
-        saveAgentRoomLog(roomId, agent.name, 'info', 'Simple query fast-path', {
-          source: 'room_message',
-          fast_path: true,
+      // Log the classification path
+      const pathLabel = useProgressPath ? 'Progress check' : useSimplePath ? 'Simple query fast-path' : 'Started work on a room task';
+      saveAgentRoomLog(roomId, agent.name, 'info', pathLabel, {
+        source: 'room_message',
+        classification,
+        fast_path: useSimplePath || useProgressPath,
+      });
+      this.emitRoomEvent(roomId, 'agent_room:log', {
+        log: {
+          agent_name: agent.name,
+          level: 'info',
+          message: pathLabel,
+          created_at: nowUnix(),
+          meta: { source: 'room_message', classification, fast_path: useSimplePath || useProgressPath },
+        },
+      });
+
+      let result;
+      if (useProgressPath) {
+        // xa reports xb's progress — no xb invocation needed
+        result = await runProgressCheckTurn({
+          agent,
+          roomContext: { roomId, roomName: room.name, agents },
+          input,
+          conversationHistory: messages,
         });
-        this.emitRoomEvent(roomId, 'agent_room:log', {
-          log: {
-            agent_name: agent.name,
-            level: 'info',
-            message: 'Simple query fast-path',
-            created_at: nowUnix(),
-            meta: { source: 'room_message', fast_path: true },
-          },
+      } else if (useSimplePath) {
+        // xa handles directly — no xb invocation needed
+        result = await runSimpleAgentTurn({
+          agent,
+          roomContext: { roomId, roomName: room.name, agents },
+          input,
+          conversationHistory: messages,
         });
       } else {
-        saveAgentRoomLog(roomId, agent.name, 'info', 'Started work on a room task', {
-          source: 'room_message',
-        });
-        this.emitRoomEvent(roomId, 'agent_room:log', {
-          log: {
-            agent_name: agent.name,
-            level: 'info',
-            message: 'Started work on a room task',
-            created_at: nowUnix(),
-            meta: { source: 'room_message' },
-          },
-        });
-      }
+        // ── Async xb with progress tracking ──────────────────
+        // 1. xa sends immediate acknowledgment
+        const hasRouterModel = agent.router_config && Object.keys(agent.router_config).length > 0;
+        if (hasRouterModel) {
+          const ackMessage = this.postAgentMessage(roomId, agent.name, '⏳ Working on it...', 'message');
+          if (ackMessage) postedMessages.push(ackMessage);
+        }
 
-      const result = useSimplePath
-        ? await runSimpleAgentTurn({
-            agent,
-            roomContext: { roomId, roomName: room.name, agents },
-            input,
-            conversationHistory: messages,
-          })
-        : await runReactiveAgentTurn({
+        // 2. Start progress tracking
+        startXbTask(roomId, agent.name, 'Analyzing request...');
+
+        // 3. Run xb (still synchronous within this turn, but progress is tracked)
+        try {
+          result = await runReactiveAgentTurn({
             agent,
             roomContext: {
               roomId,
@@ -639,7 +657,18 @@ export class LangChainAgentRoomOrchestrator extends EventEmitter {
               if (message) postedMessages.push(message);
               return message;
             },
+            onToolUse: (agentName, toolName, _toolCall) => {
+              updateXbStep(roomId, agentName, `Executing ${toolName}...`);
+              recordXbToolCall(roomId, agentName, toolName, 'running');
+            },
           });
+          // xb completed successfully — mark progress
+          completeXbTask(roomId, agent.name, result.message?.slice(0, 100) || 'Done');
+        } catch (xbError) {
+          failXbTask(roomId, agent.name, xbError.message);
+          throw xbError; // Re-throw so outer catch handles it
+        }
+      }
 
       const actionErrors = [];
       const fileArtifacts = [];

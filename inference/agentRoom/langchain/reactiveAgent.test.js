@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { extractToolCalls, getAllowedCollaborationToolNames, getRoleOperatingGuidance, getToolCallingMode, isSimpleQuery, shouldAgentRespond } from './reactiveAgent.js';
+import { extractToolCalls, getAllowedCollaborationToolNames, getRoleOperatingGuidance, getToolCallingMode, isSimpleQuery, isProgressQuery, shouldAgentRespond } from './reactiveAgent.js';
 
 const agents = [
   { name: 'planner', role: 'Breaks work into steps and coordinates implementation.', system_prompt: '' },
@@ -228,4 +228,27 @@ test('isSimpleQuery detects @mentions and file paths as complex', () => {
 
 test('isSimpleQuery detects long messages as complex', () => {
   assert.equal(isSimpleQuery('I need you to analyze the entire codebase and find all the performance bottlenecks then create a detailed report'), false);
+});
+
+// ── isProgressQuery tests ──────────────────────────────────────
+
+test('isProgressQuery detects English progress queries', () => {
+  assert.equal(isProgressQuery("how's it going?"), true);
+  assert.equal(isProgressQuery('what is the status?'), true);
+  assert.equal(isProgressQuery('any progress?'), true);
+  assert.equal(isProgressQuery('are you done yet?'), true);
+});
+
+test('isProgressQuery detects Indonesian progress queries', () => {
+  assert.equal(isProgressQuery('udah selesai?'), true);
+  assert.equal(isProgressQuery('gimana progressnya?'), true);
+  assert.equal(isProgressQuery('sudah belum?'), true);
+  assert.equal(isProgressQuery('lagi ngapain?'), true);
+});
+
+test('isProgressQuery rejects non-progress messages', () => {
+  assert.equal(isProgressQuery('hi'), false);
+  assert.equal(isProgressQuery('create a file'), false);
+  assert.equal(isProgressQuery('thanks!'), false);
+  assert.equal(isProgressQuery('@coder fix the bug'), false);
 });

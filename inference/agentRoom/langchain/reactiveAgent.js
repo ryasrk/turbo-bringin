@@ -391,41 +391,58 @@ function buildTextToolFollowUpMessage(toolResults) {
 
 // ── xa Router Classification ───────────────────────────────────
 
+import { getXbProgressSummary, getActiveXbTasks } from '../progressStore.js';
+
+/** JS heuristic for progress-check queries (0ms, 0 cost). */
+const PROGRESS_PATTERNS = /\b(progress|status|how.?s it|gimana|udah|sudah|done yet|finished|selesai|update|lagi ngapain)\b/i;
+
+export function isProgressQuery(content) {
+  return PROGRESS_PATTERNS.test(content);
+}
+
 const XA_CLASSIFY_PROMPT = `You are a message router for an AI agent team. Classify the user's message.
 
 Reply with EXACTLY one word:
 - CHAT — greetings, thanks, acknowledgments, casual conversation, simple questions about yourself
+- PROGRESS — asking about current work status, what you're doing, are you done yet
 - DELEGATE — requests that need tools, file operations, code generation, analysis, planning, or deep reasoning
 
 Examples:
 "hi" → CHAT
 "thanks!" → CHAT
-"how are you?" → CHAT
 "keren broo" → CHAT
-"explain recursion" → DELEGATE
+"how's it going?" → PROGRESS
+"udah selesai?" → PROGRESS
+"what are you working on?" → PROGRESS
 "create a file" → DELEGATE
 "@coder fix the bug" → DELEGATE
-"what files are in the workspace?" → DELEGATE
 
-Reply with one word only: CHAT or DELEGATE`;
+Reply with one word only: CHAT, PROGRESS, or DELEGATE`;
 
 /**
- * Use the xa (router) model to classify a message as CHAT or DELEGATE.
+ * Use the xa (router) model to classify a message.
+ * Returns: 'chat' | 'progress' | 'delegate'
  * Falls back to JS heuristic if xa fails or is unavailable.
  *
  * @param {Object} agent - Agent definition with router_config
  * @param {string} userContent - Raw user message content
- * @returns {Promise<'chat' | 'delegate'>}
+ * @param {string} [roomId] - Room ID for progress checking
+ * @returns {Promise<'chat' | 'progress' | 'delegate'>}
  */
-export async function classifyWithRouter(agent, userContent) {
+export async function classifyWithRouter(agent, userContent, roomId = '') {
   // Fast-path: obvious cases skip the LLM entirely
+  if (isProgressQuery(userContent) && roomId) {
+    const activeTasks = getActiveXbTasks(roomId);
+    if (activeTasks.length > 0) return 'progress';
+  }
   if (isSimpleQuery(userContent)) return 'chat';
 
-  const routerModel = createRouterModel(agent);
   // If no router config, fall back to heuristic (always delegate for non-simple)
   if (!agent.router_config || Object.keys(agent.router_config).length === 0) {
     return 'delegate';
   }
+
+  const routerModel = createRouterModel(agent);
 
   try {
     const messages = [
@@ -436,6 +453,11 @@ export async function classifyWithRouter(agent, userContent) {
     const raw = normalizeResponseContent(result.content).trim().toUpperCase();
 
     if (raw.includes('CHAT')) return 'chat';
+    if (raw.includes('PROGRESS')) {
+      // Only return progress if there are active tasks
+      if (roomId && getActiveXbTasks(roomId).length > 0) return 'progress';
+      return 'chat'; // No active tasks, treat as chat
+    }
     if (raw.includes('DELEGATE')) return 'delegate';
     // Ambiguous response — default to delegate (safer)
     console.log(`[${agent.name}] xa classify ambiguous: "${raw}" → defaulting to delegate`);
@@ -502,6 +524,84 @@ export async function runSimpleAgentTurn({ agent, roomContext, input, conversati
     console.error(`[${agent.name}] xa turn failed:`, error.message);
     return {
       message: 'Got it.',
+      toolResults: [],
+      handoffs: [],
+      privateMemory: '',
+      usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, model: '', provider: '' },
+      confidence: 0.5,
+    };
+  }
+}
+
+/**
+ * xa reports xb's progress — used when user asks "how's it going?" while xb is working.
+ * Uses the router model to format a natural progress report.
+ */
+export async function runProgressCheckTurn({ agent, roomContext, input, conversationHistory }) {
+  const routerModel = createRouterModel(agent);
+  const roomId = roomContext.roomId;
+
+  // Gather progress for all active xb tasks in this room
+  const activeTasks = getActiveXbTasks(roomId);
+  const progressLines = activeTasks.map(({ agentName, progress: _p }) =>
+    `@${agentName}: ${getXbProgressSummary(roomId, agentName)}`
+  );
+
+  // Also check this agent's own progress
+  const ownProgress = getXbProgressSummary(roomId, agent.name);
+  if (!activeTasks.some((t) => t.agentName === agent.name)) {
+    progressLines.unshift(`@${agent.name}: ${ownProgress}`);
+  }
+
+  const progressContext = progressLines.length > 0
+    ? progressLines.join('\n')
+    : 'No active tasks at the moment.';
+
+  const systemPrompt = `${agent.system_prompt || `You are ${agent.name}.`}
+Room: ${roomContext.roomName}.
+The user is asking about work progress. Report the status naturally and concisely.
+Current task status:
+${progressContext}`;
+
+  const messages = [new SystemMessage(systemPrompt)];
+
+  // Only last 2 messages for context
+  const recentHistory = conversationHistory.slice(-2);
+  for (const msg of recentHistory) {
+    if (msg.sender_type === 'user') {
+      messages.push(new HumanMessage(`[${msg.sender_name}]: ${msg.content}`));
+    } else if (msg.sender_type === 'agent' && msg.sender_name === agent.name) {
+      messages.push(new AIMessage(msg.content));
+    }
+  }
+  messages.push(new HumanMessage(input));
+
+  try {
+    const result = await routerModel.invoke(messages);
+    const content = normalizeResponseContent(result.content);
+    const usage = result.additional_kwargs?.usage || {};
+
+    console.log(`[${agent.name}] xa progress check — ${usage.total_tokens || 0} tokens`);
+
+    return {
+      message: content || progressContext,
+      toolResults: [],
+      handoffs: [],
+      privateMemory: '',
+      usage: {
+        prompt_tokens: usage.prompt_tokens || 0,
+        completion_tokens: usage.completion_tokens || 0,
+        total_tokens: usage.total_tokens || 0,
+        model: result.additional_kwargs?.model || '',
+        provider: result.additional_kwargs?.provider || '',
+      },
+      confidence: 0.8,
+    };
+  } catch (error) {
+    console.error(`[${agent.name}] xa progress check failed:`, error.message);
+    // Fallback: return raw progress data
+    return {
+      message: progressContext,
       toolResults: [],
       handoffs: [],
       privateMemory: '',
