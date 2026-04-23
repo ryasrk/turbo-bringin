@@ -165,6 +165,39 @@ function allowsReactiveFollowUp(triggerMessage) {
   return ['handoff', 'proposal_response'].includes(triggerMessage.event_type);
 }
 
+// ── Quality Gate ──────────────────────────────────────────────
+// Detect whether a reviewer message approves or requests rework.
+const MAX_REWORK_CYCLES = 2;
+
+function detectReviewVerdict(message) {
+  if (message.sender_type !== 'agent') return null;
+  const content = String(message.content || '').toLowerCase();
+  const senderName = String(message.sender_name || '').toLowerCase();
+
+  // Only reviewer-like agents produce verdicts
+  if (!senderName.includes('review')) return null;
+
+  const approvalPatterns = [
+    /\bapproved?\b/, /\blgtm\b/, /\blooks good\b/, /\bno issues\b/,
+    /\ball good\b/, /\bship it\b/, /\bready to merge\b/, /\bwell done\b/,
+    /\bno changes needed\b/, /\bapproval\b/,
+  ];
+  const rejectionPatterns = [
+    /\bneeds? (fix|change|update|rework)\b/, /\bplease fix\b/, /\bcritical\b.*\bissue\b/,
+    /\b@coder\b.*\bfix\b/, /\brework\b/, /\brejected?\b/, /\bnot approved\b/,
+    /\bchanges? (required|needed|requested)\b/,
+  ];
+
+  const isApproval = approvalPatterns.some((p) => p.test(content));
+  const isRejection = rejectionPatterns.some((p) => p.test(content));
+
+  if (isRejection && !isApproval) return 'rework';
+  if (isApproval && !isRejection) return 'approved';
+  // Ambiguous — if mentions @coder, treat as rework request
+  if (content.includes('@coder')) return 'rework';
+  return null;
+}
+
 export function selectReactingAgents({ agents, triggerMessage, roomConfig, responseCounts = new Map() }) {
   const mentionedAgentNames = getMentionedAgentNames(agents, triggerMessage.content);
   const targetAgentNames = triggerMessage.event_type === 'handoff'
@@ -306,6 +339,7 @@ export class LangChainAgentRoomOrchestrator extends EventEmitter {
     const triggerQueue = [initialTrigger];
     const responseCounts = new Map();
     let cycles = 0;
+    let reworkCycles = 0;
 
     while (triggerQueue.length > 0 && cycles < roomConfig.maxCycles) {
       const triggerMessage = triggerQueue.shift();
@@ -334,6 +368,39 @@ export class LangChainAgentRoomOrchestrator extends EventEmitter {
         responseCounts.set(result.value.agentName, count + 1);
 
         for (const message of result.value.postedMessages) {
+          // ── Quality Gate: detect reviewer verdict ──
+          const verdict = detectReviewVerdict(message);
+          if (verdict === 'approved') {
+            this.emitRoomEvent(roomId, 'agent_room:quality_gate', {
+              verdict: 'approved',
+              reviewer: message.sender_name,
+              cycle: reworkCycles,
+              timestamp: nowUnix(),
+            });
+          } else if (verdict === 'rework' && reworkCycles < MAX_REWORK_CYCLES) {
+            reworkCycles += 1;
+            this.emitRoomEvent(roomId, 'agent_room:quality_gate', {
+              verdict: 'rework',
+              reviewer: message.sender_name,
+              cycle: reworkCycles,
+              timestamp: nowUnix(),
+            });
+            // Inject a rework handoff to coder if not already present
+            const hasCoderfHandoff = message.content.toLowerCase().includes('@coder');
+            if (!hasCoderfHandoff) {
+              const reworkMessage = {
+                sender_type: 'agent',
+                sender_name: message.sender_name,
+                content: `@coder Please address the review feedback above and fix the issues found. This is rework cycle ${reworkCycles}/${MAX_REWORK_CYCLES}.`,
+                event_type: 'handoff',
+                created_at: nowUnix(),
+              };
+              saveAgentRoomMessage(roomId, 'agent', message.sender_name, reworkMessage.content, 'handoff');
+              this.emitRoomEvent(roomId, 'agent_room:message', { message: reworkMessage });
+              triggerQueue.push(reworkMessage);
+            }
+          }
+
           triggerQueue.push(message);
         }
       }
@@ -542,10 +609,20 @@ export class LangChainAgentRoomOrchestrator extends EventEmitter {
         agent_name: agent.name,
         status: 'idle',
       });
+      // Emit confidence score
+      if (typeof result.confidence === 'number') {
+        this.emitRoomEvent(roomId, 'agent_room:confidence', {
+          agent_name: agent.name,
+          confidence: result.confidence,
+          timestamp: nowUnix(),
+        });
+      }
+
       this.emitRoomEvent(roomId, 'agent_room:agent_done', {
         agent_name: agent.name,
         handoffs: result.handoffs,
         action_errors: actionErrors,
+        confidence: result.confidence,
       });
 
       return {

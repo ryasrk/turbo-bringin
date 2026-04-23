@@ -310,6 +310,34 @@ export function setAgentWorkspacePreviewMode(mode) {
   });
 }
 
+/**
+ * Toggle fullscreen mode for the workspace preview panel.
+ * In fullscreen, the preview takes over the entire viewport with a floating toolbar.
+ */
+export function togglePreviewFullscreen() {
+  const workspaceMain = rs.panel?.querySelector('.workspace-main');
+  if (!workspaceMain) return;
+
+  const isFullscreen = workspaceMain.classList.toggle('is-fullscreen');
+  const fullscreenBtn = rs.panel?.querySelector('#agent-room-fullscreen-btn');
+  if (fullscreenBtn) {
+    fullscreenBtn.textContent = isFullscreen ? '⛶ Exit Fullscreen' : '⛶ Fullscreen';
+  }
+
+  // Handle Escape key to exit fullscreen
+  if (isFullscreen) {
+    const handleEscape = (e) => {
+      if (e.key === 'Escape') {
+        workspaceMain.classList.remove('is-fullscreen');
+        if (fullscreenBtn) fullscreenBtn.textContent = '⛶ Fullscreen';
+        document.removeEventListener('keydown', handleEscape);
+        syncWorkspacePreviewActions();
+      }
+    };
+    document.addEventListener('keydown', handleEscape);
+  }
+}
+
 export async function runSelectedAgentPythonFile() {
   if (!rs.currentAgentRoomId || !isPythonWorkspaceFile(rs.agentRoomSelectedFile)) return;
 
@@ -463,6 +491,7 @@ function syncWorkspacePreviewActions() {
   const codeBtn = rs.panel?.querySelector('#agent-room-view-code-btn');
   const downloadBtn = rs.panel?.querySelector('#agent-room-download-file-btn');
   const liveBtn = rs.panel?.querySelector('#agent-room-view-live-btn');
+  const fullscreenBtn = rs.panel?.querySelector('#agent-room-fullscreen-btn');
   const runBtn = rs.panel?.querySelector('#agent-room-run-python-btn');
   const requestReviewBtn = rs.panel?.querySelector('#agent-room-request-review-btn');
   const requestChangesBtn = rs.panel?.querySelector('#agent-room-request-changes-btn');
@@ -483,6 +512,13 @@ function syncWorkspacePreviewActions() {
   if (liveBtn) {
     liveBtn.hidden = !isHtmlWorkspaceFile(path);
     liveBtn.classList.toggle('is-active', rs.agentRoomPreviewMode === 'live');
+  }
+
+  // Show fullscreen button when previewing any file
+  if (fullscreenBtn) {
+    fullscreenBtn.hidden = !path;
+    const isFullscreen = rs.panel?.querySelector('.workspace-main')?.classList.contains('is-fullscreen');
+    fullscreenBtn.textContent = isFullscreen ? '⛶ Exit Fullscreen' : '⛶ Fullscreen';
   }
 
   if (runBtn) {

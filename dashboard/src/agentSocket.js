@@ -7,7 +7,7 @@ import {
   refreshAgentFiles, openAgentFile, renderConnectionState, renderAgentProgress, renderAgentLogs,
    
 } from './agentWorkspace.js';
-import { setAgentTypingStatus, clearAllTypingIndicators } from './agentTypingIndicator.js';
+import { setAgentTypingStatus, setAgentActivity, clearAllTypingIndicators } from './agentTypingIndicator.js';
 import { extractHandoffsFromMessage } from './agentHandoffViz.js';
 import { addRealtimeTokenUsage } from './agentTokenUsage.js';
 
@@ -118,6 +118,11 @@ export function connectAgentRoomSocket() {
           timestamp: Date.now(),
         });
       }
+      // Update typing indicator with latest tool activity
+      const latestTool = (payload.tools || []).filter((t) => t.status === 'success').pop();
+      if (latestTool && payload.agent_name) {
+        setAgentActivity(payload.agent_name, latestTool.tool);
+      }
       renderAgentProgress();
       return;
     }
@@ -126,6 +131,44 @@ export function connectAgentRoomSocket() {
       if (payload.agent_name && payload.usage) {
         addRealtimeTokenUsage(payload.agent_name, payload.usage);
       }
+      return;
+    }
+
+    if (payload.type === 'agent_room:confidence') {
+      if (payload.agent_name && typeof payload.confidence === 'number') {
+        // Update agent confidence in member list
+        rs.currentAgentMembers = rs.currentAgentMembers.map((a) =>
+          a.name === payload.agent_name ? { ...a, confidence: payload.confidence } : a
+        );
+        // Update confidence badge on agent pill
+        const pill = rs.panel?.querySelector(`[data-agent-edit="${CSS.escape(payload.agent_name)}"]`);
+        if (pill) {
+          let badge = pill.querySelector('.agent-confidence-badge');
+          if (!badge) {
+            badge = document.createElement('span');
+            badge.className = 'agent-confidence-badge';
+            pill.appendChild(badge);
+          }
+          const pct = Math.round(payload.confidence * 100);
+          badge.textContent = `${pct}%`;
+          badge.className = `agent-confidence-badge ${pct >= 70 ? 'confidence-high' : pct >= 40 ? 'confidence-mid' : 'confidence-low'}`;
+        }
+      }
+      return;
+    }
+
+    if (payload.type === 'agent_room:quality_gate') {
+      const emoji = payload.verdict === 'approved' ? '✅' : '🔄';
+      const msg = payload.verdict === 'approved'
+        ? `${emoji} @${payload.reviewer} approved the implementation`
+        : `${emoji} @${payload.reviewer} requested rework (cycle ${payload.cycle})`;
+      appendAgentRoomMessage({
+        sender_type: 'system',
+        sender_name: 'quality-gate',
+        content: msg,
+        event_type: 'system',
+        created_at: payload.timestamp || Math.floor(Date.now() / 1000),
+      });
       return;
     }
 

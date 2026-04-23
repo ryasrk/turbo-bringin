@@ -160,7 +160,7 @@ Respond naturally. When using tools, briefly describe what you're doing.
 End with a clear message about what you did or what you think.
 Use @agent_name to hand off. Never hand work off to yourself.
 
-${roomContext.privateMemory ? `## Your Private Memory\n${roomContext.privateMemory}` : ''}`;
+${roomContext.privateMemory ? `## Your Private Memory\n${formatPrivateMemoryForPrompt(roomContext.privateMemory)}` : ''}`;
 }
 
 /**
@@ -430,8 +430,53 @@ export async function runReactiveAgentTurn({
     new SystemMessage(systemPrompt),
   ];
 
-  // Add relevant conversation history
-  for (const msg of conversationHistory.slice(-12)) {
+  // ── Adaptive Context Window Management ──────────────────────
+  // Split history into "old" (summarized) and "recent" (full detail).
+  // This preserves critical context while keeping token usage manageable.
+  const RECENT_MESSAGE_COUNT = 8;
+  const recentHistory = conversationHistory.slice(-RECENT_MESSAGE_COUNT);
+  const olderHistory = conversationHistory.slice(0, -RECENT_MESSAGE_COUNT);
+
+  // Summarize older messages into a compact context block
+  if (olderHistory.length > 0) {
+    const summaryLines = [];
+    const agentActions = new Map();
+    const keyDecisions = [];
+
+    for (const msg of olderHistory) {
+      const sender = msg.sender_type === 'user' ? msg.sender_name : `@${msg.sender_name}`;
+      const preview = String(msg.content || '').slice(0, 120).replace(/\n/g, ' ');
+
+      if (msg.event_type === 'handoff') {
+        summaryLines.push(`  ${sender} → handoff: ${preview}`);
+      } else if (msg.event_type === 'proposal' || msg.event_type === 'proposal_response') {
+        keyDecisions.push(`  ${sender}: ${preview}`);
+      } else if (msg.sender_type === 'agent') {
+        const actions = agentActions.get(msg.sender_name) || [];
+        actions.push(preview);
+        agentActions.set(msg.sender_name, actions);
+      }
+    }
+
+    // Build compact summary
+    const parts = [`[system] Conversation summary (${olderHistory.length} earlier messages):`];
+    if (keyDecisions.length > 0) {
+      parts.push('Key decisions:');
+      parts.push(...keyDecisions.slice(-4));
+    }
+    for (const [agentName, actions] of agentActions) {
+      parts.push(`@${agentName} actions: ${actions.slice(-2).join(' → ')}`);
+    }
+    if (summaryLines.length > 0) {
+      parts.push('Handoffs:');
+      parts.push(...summaryLines.slice(-4));
+    }
+
+    messages.push(new HumanMessage(parts.join('\n')));
+  }
+
+  // Add recent conversation history in full detail
+  for (const msg of recentHistory) {
     if (msg.sender_type === 'user') {
       messages.push(new HumanMessage(`[${msg.sender_name}]: ${msg.content}`));
     } else if (msg.sender_type === 'agent') {
@@ -448,9 +493,46 @@ export async function runReactiveAgentTurn({
   // Add the current input
   messages.push(new HumanMessage(input));
 
-  // Add workspace listing context
+  // ── Smart Workspace Listing ─────────────────────────────────
+  // Filter workspace listing to prioritize relevant files based on task keywords.
   const workspaceListing = roomContext.workspaceListing || '[empty workspace]';
-  messages.push(new HumanMessage(`[system] Current workspace files:\n${workspaceListing}`));
+  const workspaceLines = workspaceListing.split('\n').filter(Boolean);
+  const MAX_WORKSPACE_LINES = 50;
+
+  let filteredListing;
+  if (workspaceLines.length <= MAX_WORKSPACE_LINES) {
+    filteredListing = workspaceListing;
+  } else {
+    // Extract task keywords for relevance filtering
+    const taskWords = new Set(
+      input.toLowerCase().split(/\s+/)
+        .filter((w) => w.length > 3)
+        .map((w) => w.replace(/[^a-z0-9]/g, ''))
+        .filter(Boolean),
+    );
+    // Always show key structural files
+    const keyPatterns = ['plan.md', 'review.md', 'README', 'src/', 'notes/', 'index', 'main', 'app', 'config'];
+    const relevantLines = [];
+    const otherLines = [];
+
+    for (const line of workspaceLines) {
+      const lower = line.toLowerCase();
+      const isKey = keyPatterns.some((p) => lower.includes(p.toLowerCase()));
+      const isRelevant = [...taskWords].some((w) => lower.includes(w));
+      if (isKey || isRelevant) {
+        relevantLines.push(line);
+      } else {
+        otherLines.push(line);
+      }
+    }
+
+    const remaining = MAX_WORKSPACE_LINES - relevantLines.length;
+    const shown = [...relevantLines, ...otherLines.slice(0, Math.max(remaining, 10))];
+    const hidden = workspaceLines.length - shown.length;
+    filteredListing = shown.join('\n') + (hidden > 0 ? `\n... and ${hidden} more files (use list_files to explore)` : '');
+  }
+
+  messages.push(new HumanMessage(`[system] Current workspace files:\n${filteredListing}`));
 
   // Add available tools description
   const toolDescriptions = allTools
@@ -476,6 +558,11 @@ export async function runReactiveAgentTurn({
   const seenResponseSignatures = new Set();
   let explicitToolRetryCount = 0;
   let postToolRetryCount = 0;
+
+  // ── Tool Result Cache ───────────────────────────────────────
+  // Cache read-only tool results within this turn to avoid redundant LLM calls.
+  const CACHEABLE_TOOLS = new Set(['list_files', 'read_file', 'search_skills', 'read_skill', 'list_skill_files']);
+  const toolResultCache = new Map();
 
   try {
     for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration += 1) {
@@ -576,7 +663,22 @@ export async function runReactiveAgentTurn({
           if (onToolUse) {
             onToolUse(agent.name, toolCall.tool, toolCall);
           }
-          const toolResult = await tool.func(toolCall);
+
+          // Check cache for read-only tools
+          const cacheKey = CACHEABLE_TOOLS.has(toolCall.tool)
+            ? `${toolCall.tool}:${JSON.stringify(toolCall)}`
+            : null;
+          const cachedResult = cacheKey ? toolResultCache.get(cacheKey) : undefined;
+
+          const toolResult = cachedResult !== undefined
+            ? cachedResult
+            : await tool.func(toolCall);
+
+          // Store in cache for read-only tools
+          if (cacheKey && cachedResult === undefined) {
+            toolResultCache.set(cacheKey, toolResult);
+          }
+
           const normalizedToolResult = normalizeToolExecutionResult(toolResult);
           const recordedResult = normalizedToolResult.error
             ? { tool: toolCall.tool, error: normalizedToolResult.error, result: normalizedToolResult.result, params: toolCall }
@@ -599,6 +701,11 @@ export async function runReactiveAgentTurn({
               tool_call_id: nativeToolCall.id,
             }));
           }
+        }
+
+        // Invalidate cache when workspace is mutated
+        if (toolCall.tool === 'write_file' || toolCall.tool === 'update_file') {
+          toolResultCache.clear();
         }
 
         // Skill tools are free context-gathering — don't count against budget
@@ -638,6 +745,69 @@ export async function runReactiveAgentTurn({
         break;
       }
     }
+    // ── Self-Reflection Loop ──────────────────────────────────
+    // After the main tool loop, give the agent one chance to review its own work.
+    // Only triggers when the agent actually did meaningful work (wrote/updated files).
+    const mutatingTools = toolResults.filter(
+      (r) => !r.error && (r.tool === 'write_file' || r.tool === 'update_file'),
+    );
+    if (finalMessage && mutatingTools.length > 0 && executedToolCount < MAX_TOOL_ITERATIONS - 2) {
+      const fileList = mutatingTools.map((r) => r.params?.path || 'unknown').join(', ');
+      messages.push(new HumanMessage(
+        `[system] Self-review checkpoint. You wrote/updated: ${fileList}.\n`
+        + 'Before finalizing, briefly check:\n'
+        + '1. Did you miss any files or steps from the plan?\n'
+        + '2. Are there obvious errors in what you wrote?\n'
+        + '3. Should you hand off to another agent?\n'
+        + 'If everything looks good, confirm and provide your final message. '
+        + 'If you spot an issue, fix it now with a tool call.',
+      ));
+
+      try {
+        const reflectionResult = await (nativeToolCallingEnabled ? nativeModel : baseModel).invoke(messages);
+        const reflectionUsage = reflectionResult.additional_kwargs?.usage;
+        if (reflectionUsage) {
+          usageAccumulator.prompt_tokens += Number(reflectionUsage.prompt_tokens) || 0;
+          usageAccumulator.completion_tokens += Number(reflectionUsage.completion_tokens) || 0;
+          usageAccumulator.total_tokens += Number(reflectionUsage.total_tokens) || 0;
+        }
+
+        const reflectionContent = normalizeResponseContent(reflectionResult.content);
+        const reflectionNativeToolCalls = extractNativeToolCalls(reflectionResult);
+        const reflectionToolCalls = reflectionNativeToolCalls.length > 0
+          ? reflectionNativeToolCalls.map((tc) => normalizeNativeToolCall(tc, new Set(allTools.map((t) => t.name)))).filter(Boolean)
+          : extractToolCalls(reflectionContent);
+        const reflectionClean = reflectionNativeToolCalls.length > 0
+          ? reflectionContent.trim()
+          : removeToolBlocks(reflectionContent).trim();
+
+        // Execute any correction tool calls from reflection
+        for (const toolCall of reflectionToolCalls.slice(0, 3)) {
+          const tool = allTools.find((t) => t.name === toolCall.tool);
+          if (!tool) continue;
+          try {
+            if (onToolUse) onToolUse(agent.name, toolCall.tool, toolCall);
+            const toolResult = await tool.func(toolCall);
+            const normalized = normalizeToolExecutionResult(toolResult);
+            toolResults.push(
+              normalized.error
+                ? { tool: toolCall.tool, error: normalized.error, result: normalized.result, params: toolCall }
+                : { tool: toolCall.tool, result: normalized.result, params: toolCall },
+            );
+          } catch {
+            toolResults.push({ tool: toolCall.tool, error: 'Tool execution failed', params: toolCall });
+          }
+        }
+
+        // Update final message with reflection output
+        if (reflectionClean) {
+          finalMessage = reflectionClean;
+        }
+        collectHandoffs(handoffs, reflectionContent, agent.name, roomContext.agents);
+      } catch {
+        // Reflection failed — keep original finalMessage, not critical
+      }
+    }
   } catch (error) {
     finalMessage = 'I encountered an internal error while working on that task.';
   }
@@ -646,13 +816,59 @@ export async function runReactiveAgentTurn({
     finalMessage = `${agent.name} completed ${toolResults.length} action(s).`;
   }
 
+  // ── Confidence Scoring ──────────────────────────────────────
+  // Heuristic confidence based on tool success rate, reflection, and completeness.
+  const confidence = computeConfidence(toolResults, finalMessage, handoffs);
+
   return {
     message: finalMessage,
     toolResults,
     handoffs,
     privateMemory: buildPrivateMemoryFromTurn(input, finalMessage, toolResults),
     usage: usageAccumulator,
+    confidence,
   };
+}
+
+/**
+ * Compute a confidence score (0-1) for an agent's turn output.
+ * Based on: tool success rate, presence of handoffs, message quality signals.
+ */
+export function computeConfidence(toolResults, message, handoffs) {
+  let score = 0.5; // baseline
+
+  // Tool success rate
+  const totalTools = toolResults.length;
+  if (totalTools > 0) {
+    const successCount = toolResults.filter((r) => !r.error).length;
+    const successRate = successCount / totalTools;
+    score += (successRate - 0.5) * 0.3; // ±0.15
+  }
+
+  // Did the agent produce meaningful output?
+  const msgLength = String(message || '').length;
+  if (msgLength > 200) score += 0.1;
+  if (msgLength > 500) score += 0.05;
+  if (msgLength < 50) score -= 0.1;
+
+  // Did the agent use write tools (actually did work)?
+  const wroteFiles = toolResults.some((r) => !r.error && (r.tool === 'write_file' || r.tool === 'update_file'));
+  if (wroteFiles) score += 0.1;
+
+  // Did the agent hand off properly?
+  if (handoffs.length > 0) score += 0.05;
+
+  // Uncertainty signals in message
+  const uncertaintyPatterns = [/\bnot sure\b/i, /\bmight\b/i, /\bpossibly\b/i, /\bi think\b/i, /\bunsure\b/i];
+  const uncertaintyCount = uncertaintyPatterns.filter((p) => p.test(message || '')).length;
+  score -= uncertaintyCount * 0.05;
+
+  // Error signals
+  const errorPatterns = [/\berror\b/i, /\bfailed\b/i, /\bcouldn't\b/i, /\bunable to\b/i];
+  const errorCount = errorPatterns.filter((p) => p.test(message || '')).length;
+  score -= errorCount * 0.05;
+
+  return Math.max(0, Math.min(1, Math.round(score * 100) / 100));
 }
 
 /**
@@ -1143,15 +1359,66 @@ function cleanMessageSuggestsMoreActions(cleanMessage) {
 /**
  * Build private memory from a turn's results.
  */
+/**
+ * Build structured private memory from an agent turn.
+ * Memory is organized into categories for better retrieval and learning.
+ */
 function buildPrivateMemoryFromTurn(input, message, toolResults) {
-  const toolSummary = toolResults
-    .filter((r) => !r.error)
-    .map((r) => r.tool)
-    .join(', ');
+  const successfulTools = toolResults.filter((r) => !r.error);
+  const failedTools = toolResults.filter((r) => r.error);
+  const filesWritten = successfulTools
+    .filter((r) => r.tool === 'write_file' || r.tool === 'update_file')
+    .map((r) => r.params?.path || 'unknown');
+  const filesRead = successfulTools
+    .filter((r) => r.tool === 'read_file')
+    .map((r) => r.params?.path || 'unknown');
+  const skillsUsed = successfulTools
+    .filter((r) => SKILL_TOOL_NAMES_SET.has(r.tool))
+    .map((r) => r.params?.skill_id || r.params?.query || r.tool);
 
-  return [
-    `Last task: ${input.slice(0, 200)}`,
-    message ? `Result: ${message.slice(0, 200)}` : '',
-    toolSummary ? `Tools used: ${toolSummary}` : '',
-  ].filter(Boolean).join('\n');
+  const memory = {
+    last_task: input.slice(0, 300),
+    result_summary: message ? message.slice(0, 300) : '',
+    tools_used: successfulTools.map((r) => r.tool),
+    files_written: filesWritten,
+    files_read: filesRead,
+    skills_consulted: skillsUsed,
+    mistakes: failedTools.map((r) => `${r.tool}: ${r.error}`).slice(0, 5),
+    timestamp: Math.floor(Date.now() / 1000),
+  };
+
+  return JSON.stringify(memory);
+}
+
+/**
+ * Parse structured memory from stored JSON, with fallback for legacy text format.
+ */
+export function parsePrivateMemory(raw) {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object' && parsed.last_task) {
+      return parsed;
+    }
+  } catch {
+    // Legacy text format — wrap it
+  }
+  return { last_task: raw, result_summary: '', tools_used: [], files_written: [], files_read: [], skills_consulted: [], mistakes: [] };
+}
+
+/**
+ * Format structured memory for inclusion in system prompt.
+ */
+export function formatPrivateMemoryForPrompt(raw) {
+  const memory = parsePrivateMemory(raw);
+  if (!memory) return '';
+
+  const parts = [];
+  if (memory.last_task) parts.push(`Last task: ${memory.last_task}`);
+  if (memory.result_summary) parts.push(`Result: ${memory.result_summary}`);
+  if (memory.files_written?.length > 0) parts.push(`Files written: ${memory.files_written.join(', ')}`);
+  if (memory.files_read?.length > 0) parts.push(`Files read: ${memory.files_read.join(', ')}`);
+  if (memory.skills_consulted?.length > 0) parts.push(`Skills used: ${memory.skills_consulted.join(', ')}`);
+  if (memory.mistakes?.length > 0) parts.push(`Previous mistakes (avoid repeating): ${memory.mistakes.join('; ')}`);
+  return parts.join('\n');
 }

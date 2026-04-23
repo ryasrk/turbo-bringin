@@ -5,20 +5,47 @@
 
 import { rs, escapeHtml } from './roomsUtils.js';
 
-/** @type {Map<string, number>} agent name → timestamp when status changed to running */
+/** @type {Map<string, {timestamp: number, activity: string}>} agent name → status info */
 const activeAgents = new Map();
 const STALE_TIMEOUT_MS = 120_000; // 2 minutes
+
+const TOOL_ACTIVITY_LABELS = {
+  list_files: 'exploring workspace',
+  read_file: 'reading files',
+  write_file: 'writing code',
+  update_file: 'editing code',
+  run_python: 'running Python',
+  search_skills: 'searching skills',
+  read_skill: 'reading skill guide',
+  think_aloud: 'reasoning',
+  propose: 'creating proposal',
+  delegate: 'delegating work',
+  respond_to_proposal: 'reviewing proposal',
+};
 
 export function setAgentTypingStatus(agentName, status) {
   const name = String(agentName || '').toLowerCase();
   if (!name) return;
 
   if (status === 'running') {
-    activeAgents.set(name, Date.now());
+    activeAgents.set(name, { timestamp: Date.now(), activity: 'thinking' });
   } else {
     activeAgents.delete(name);
   }
 
+  renderTypingIndicator();
+}
+
+/**
+ * Update the activity label for a running agent (called from progress events).
+ */
+export function setAgentActivity(agentName, toolName) {
+  const name = String(agentName || '').toLowerCase();
+  if (!name || !activeAgents.has(name)) return;
+
+  const entry = activeAgents.get(name);
+  entry.activity = TOOL_ACTIVITY_LABELS[toolName] || toolName || 'working';
+  entry.timestamp = Date.now();
   renderTypingIndicator();
 }
 
@@ -33,8 +60,8 @@ export function renderTypingIndicator() {
 
   // Prune stale entries
   const now = Date.now();
-  for (const [name, ts] of activeAgents) {
-    if (now - ts > STALE_TIMEOUT_MS) {
+  for (const [name, entry] of activeAgents) {
+    if (now - entry.timestamp > STALE_TIMEOUT_MS) {
       activeAgents.delete(name);
     }
   }
@@ -45,12 +72,12 @@ export function renderTypingIndicator() {
     return;
   }
 
-  const names = [...activeAgents.keys()].sort();
-  const label = names.length === 1
-    ? `@${escapeHtml(names[0])} is thinking`
-    : names.length === 2
-      ? `@${escapeHtml(names[0])} and @${escapeHtml(names[1])} are thinking`
-      : `${names.slice(0, -1).map((n) => `@${escapeHtml(n)}`).join(', ')} and @${escapeHtml(names[names.length - 1])} are thinking`;
+  const entries = [...activeAgents.entries()].sort(([a], [b]) => a.localeCompare(b));
+  const parts = entries.map(([name, entry]) => {
+    const activity = entry.activity || 'thinking';
+    return `<span class="typing-agent">@${escapeHtml(name)}</span> <span class="typing-activity">${escapeHtml(activity)}</span>`;
+  });
+  const label = parts.join(' · ');
 
   container.hidden = false;
   container.innerHTML = `

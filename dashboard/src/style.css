@@ -4466,6 +4466,38 @@ details[open] > .profile-password-toggle::before { content: '▾ '; }
   color: var(--text-secondary);
 }
 
+/* ── Agent Confidence Badges ──────────────────────────────────── */
+.agent-confidence-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  margin-left: 6px;
+}
+
+.agent-confidence-badge.confidence-high {
+  color: #10b981;
+  background: color-mix(in srgb, #10b981 14%, transparent);
+  border: 1px solid color-mix(in srgb, #10b981 30%, transparent);
+}
+
+.agent-confidence-badge.confidence-mid {
+  color: #f59e0b;
+  background: color-mix(in srgb, #f59e0b 14%, transparent);
+  border: 1px solid color-mix(in srgb, #f59e0b 30%, transparent);
+}
+
+.agent-confidence-badge.confidence-low {
+  color: #ef4444;
+  background: color-mix(in srgb, #ef4444 14%, transparent);
+  border: 1px solid color-mix(in srgb, #ef4444 30%, transparent);
+}
+
 .agent-room-messages {
   min-height: 0;
   overflow-y: auto;
@@ -5505,6 +5537,57 @@ details[open] > .profile-password-toggle::before { content: '▾ '; }
   background: white;
 }
 
+/* ── Fullscreen Preview Mode ─────────────────────────────────── */
+.workspace-main.is-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  border-radius: 0;
+  border: none;
+  background: var(--bg-primary);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  animation: fullscreen-enter 0.2s ease-out;
+}
+
+@keyframes fullscreen-enter {
+  from {
+    opacity: 0.8;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.workspace-main.is-fullscreen .workspace-preview-header {
+  padding: 12px 20px 10px;
+  background: color-mix(in srgb, var(--bg-primary) 95%, transparent);
+  border-bottom: 1px solid var(--border);
+  backdrop-filter: blur(12px);
+}
+
+.workspace-main.is-fullscreen .workspace-preview-body {
+  overflow: auto;
+}
+
+.workspace-main.is-fullscreen .workspace-live-shell {
+  padding: 0;
+  height: 100%;
+}
+
+.workspace-main.is-fullscreen .workspace-live-preview {
+  min-height: 100%;
+  border: none;
+  border-radius: 0;
+}
+
+.workspace-main.is-fullscreen .file-preview-content {
+  max-height: none;
+  padding: 24px;
+}
+
 .workspace-run-output {
   padding: 18px;
   display: grid;
@@ -5668,6 +5751,17 @@ details[open] > .profile-password-toggle::before { content: '▾ '; }
 }
 .typing-label {
   font-size: 12px;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.typing-agent {
+  font-weight: 600;
+  color: var(--accent);
+  font-style: normal;
+}
+
+.typing-activity {
   color: var(--text-secondary);
   font-style: italic;
 }

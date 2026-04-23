@@ -28,7 +28,7 @@ import {
   refreshAgentFiles, openAgentFile, handleDownloadWorkspace, resetAgentRoomSidebar,
   downloadSelectedAgentFile,
   runSelectedAgentPythonFile, setAgentWorkspacePreviewMode, setSelectedAgentFileReviewStatus,
-  showAgentSidebar, toggleAgentSidebar, handleArtifactsClick
+  showAgentSidebar, toggleAgentSidebar, handleArtifactsClick, togglePreviewFullscreen
 } from './agentWorkspace.js';
 import { connectAgentRoomSocket, closeAgentSocket } from './agentSocket.js';
 import { loadAgentMemories, renderAgentMemories, saveAgentMemory, clearAgentMemoryAction } from './agentMemoryPanel.js';
@@ -297,6 +297,7 @@ export function createRoomsView() {
             <div class="workspace-preview-actions">
               <button type="button" id="agent-room-view-code-btn" class="btn-sm btn-secondary" hidden>Code</button>
               <button type="button" id="agent-room-view-live-btn" class="btn-sm btn-secondary" hidden>Live Preview</button>
+              <button type="button" id="agent-room-fullscreen-btn" class="btn-sm btn-secondary" hidden title="Toggle fullscreen preview">⛶ Fullscreen</button>
               <button type="button" id="agent-room-run-python-btn" class="btn-sm btn-secondary" hidden>Run Python</button>
               <button type="button" id="agent-room-request-review-btn" class="btn-sm btn-secondary" hidden>Request Review</button>
               <button type="button" id="agent-room-request-changes-btn" class="btn-sm btn-secondary" hidden>Request Changes</button>
@@ -726,6 +727,11 @@ export function initRoomsUI() {
   const liveViewBtn = rs.panel.querySelector('#agent-room-view-live-btn');
   if (liveViewBtn) {
     liveViewBtn.addEventListener('click', () => setAgentWorkspacePreviewMode('live'));
+  }
+
+  const fullscreenBtn = rs.panel.querySelector('#agent-room-fullscreen-btn');
+  if (fullscreenBtn) {
+    fullscreenBtn.addEventListener('click', () => togglePreviewFullscreen());
   }
 
   const runPythonBtn = rs.panel.querySelector('#agent-room-run-python-btn');
