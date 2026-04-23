@@ -323,5 +323,96 @@ export function createCollaborationTools(context) {
     },
   });
 
-  return [proposeTool, respondToProposalTool, thinkAloudTool, delegateTool];
+  const spawnAgentTool = new DynamicStructuredTool({
+    name: 'spawn_agent',
+    description: 'Dynamically create a new specialist agent in the room. Use when the current team lacks expertise for a specific sub-task (e.g., a "tester" for writing tests, a "devops" for deployment scripts). Only planner can spawn agents.',
+    schema: {
+      type: 'object',
+      properties: {
+        name: {
+          type: 'string',
+          description: 'Short lowercase name for the new agent (e.g., "tester", "devops", "designer").',
+        },
+        role: {
+          type: 'string',
+          description: 'One-sentence description of what this agent does.',
+        },
+        system_prompt: {
+          type: 'string',
+          description: 'System prompt defining the agent personality and instructions.',
+        },
+        model_tier: {
+          type: 'string',
+          enum: ['brain', 'worker'],
+          description: 'Model tier: "brain" for complex reasoning, "worker" for fast implementation.',
+          default: 'worker',
+        },
+        tools: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Tools the agent can use: list_files, read_file, write_file, update_file, run_python.',
+          default: ['list_files', 'read_file', 'write_file'],
+        },
+        initial_task: {
+          type: 'string',
+          description: 'Optional first task to delegate to the new agent immediately.',
+          default: '',
+        },
+      },
+      required: ['name', 'role', 'system_prompt'],
+    },
+    func: async ({ name, role, system_prompt, model_tier = 'worker', tools = ['list_files', 'read_file', 'write_file'], initial_task = '' }) => {
+      // Only planner can spawn agents
+      const callerName = String(context.agentName || '').toLowerCase();
+      if (callerName !== 'planner') {
+        return JSON.stringify({ status: 'denied', reason: 'Only planner can spawn new agents. Ask @planner to spawn the agent for you.' });
+      }
+
+      const agentName = String(name || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
+      if (!agentName || agentName.length > 20) {
+        return JSON.stringify({ status: 'error', reason: 'Agent name must be 1-20 lowercase alphanumeric characters.' });
+      }
+
+      // Check if agent already exists
+      const knownAgents = typeof context.getAgentNames === 'function' ? context.getAgentNames() : [];
+      if (knownAgents.some((n) => n.toLowerCase() === agentName)) {
+        return JSON.stringify({ status: 'exists', reason: `Agent "${agentName}" already exists in this room.` });
+      }
+
+      // Limit spawned agents per room
+      if (knownAgents.length >= 8) {
+        return JSON.stringify({ status: 'limit', reason: 'Maximum 8 agents per room. Remove an agent before spawning a new one.' });
+      }
+
+      const ALLOWED_TOOLS = new Set(['list_files', 'read_file', 'write_file', 'update_file', 'run_python']);
+      const validTools = (Array.isArray(tools) ? tools : ['list_files', 'read_file', 'write_file'])
+        .filter((t) => ALLOWED_TOOLS.has(t));
+
+      // Use the spawnAgent callback provided by the orchestrator
+      if (typeof context.spawnAgent !== 'function') {
+        return JSON.stringify({ status: 'error', reason: 'Agent spawning is not available in this room configuration.' });
+      }
+
+      try {
+        await context.spawnAgent({
+          name: agentName,
+          role: String(role || '').trim(),
+          system_prompt: String(system_prompt || '').trim(),
+          model_tier: model_tier === 'brain' ? 'brain' : 'worker',
+          tools: validTools,
+        });
+
+        let result = `Agent @${agentName} spawned successfully with role: ${role}`;
+        if (initial_task) {
+          await context.postMessage(context.agentName, `@${agentName} ${initial_task}`, 'handoff');
+          result += `\nInitial task delegated: ${initial_task}`;
+        }
+        return result;
+      } catch (err) {
+        return JSON.stringify({ status: 'error', reason: `Failed to spawn agent: ${err.message}` });
+      }
+    },
+  });
+
+  return [proposeTool, respondToProposalTool, thinkAloudTool, delegateTool, spawnAgentTool];
 }

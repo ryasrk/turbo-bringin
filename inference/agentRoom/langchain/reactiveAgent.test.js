@@ -180,7 +180,7 @@ test('getRoleOperatingGuidance keeps planner, coder, and reviewer scoped to thei
 test('getAllowedCollaborationToolNames narrows collaboration tools by role', () => {
   assert.deepEqual(
     [...getAllowedCollaborationToolNames({ name: 'planner' })].sort(),
-    ['delegate', 'propose', 'think_aloud'],
+    ['delegate', 'propose', 'spawn_agent', 'think_aloud'],
   );
   assert.deepEqual(
     [...getAllowedCollaborationToolNames({ name: 'coder' })].sort(),

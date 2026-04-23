@@ -92,7 +92,7 @@ export function getAllowedCollaborationToolNames(agent) {
   const agentName = String(agent?.name || '').toLowerCase();
 
   if (agentName === 'planner') {
-    return new Set(['propose', 'think_aloud', 'delegate']);
+    return new Set(['propose', 'think_aloud', 'delegate', 'spawn_agent']);
   }
 
   if (agentName === 'coder') {
@@ -406,6 +406,7 @@ export async function runReactiveAgentTurn({
     agentName: agent.name,
     postMessage,
     getAgentNames: () => roomContext.agents.map((a) => a.name),
+    spawnAgent: roomContext.spawnAgent || null,
   }).filter((tool) => getAllowedCollaborationToolNames(agent).has(tool.name));
 
   // Filter workspace tools based on agent's allowed tools

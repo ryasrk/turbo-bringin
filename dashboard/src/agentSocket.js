@@ -172,6 +172,27 @@ export function connectAgentRoomSocket() {
       return;
     }
 
+    if (payload.type === 'agent_room:agent_spawned') {
+      appendAgentRoomMessage({
+        sender_type: 'system',
+        sender_name: 'orchestrator',
+        content: `🤖 @${payload.spawned_by} spawned new agent @${payload.agent_name} (${payload.role})`,
+        event_type: 'system',
+        created_at: payload.timestamp || Math.floor(Date.now() / 1000),
+      });
+      // Add to current members list so the UI updates
+      if (rs.currentAgentMembers && !rs.currentAgentMembers.some((m) => m.name === payload.agent_name)) {
+        rs.currentAgentMembers.push({
+          name: payload.agent_name,
+          role: payload.role,
+          model_tier: payload.model_tier,
+          status: 'idle',
+        });
+        renderAgentMembers();
+      }
+      return;
+    }
+
     if (payload.type === 'agent_room:error') {
       showToast(payload.message || 'Agent room error', 'error');
     }

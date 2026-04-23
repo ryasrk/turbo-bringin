@@ -1,6 +1,7 @@
 import { EventEmitter } from 'events';
 
 import {
+  createAgentRoomAgent,
   getAgentRoom,
   getAgentRoomAgent,
   getAgentRoomMemory,
@@ -342,23 +343,57 @@ export class LangChainAgentRoomOrchestrator extends EventEmitter {
     let reworkCycles = 0;
 
     while (triggerQueue.length > 0 && cycles < roomConfig.maxCycles) {
-      const triggerMessage = triggerQueue.shift();
+      // ── Parallel Wave: batch independent triggers targeting different agents ──
+      const wave = [];
+      const waveAgentNames = new Set();
+
+      // Always take the first trigger
+      const firstTrigger = triggerQueue.shift();
       const agents = listAgentRoomAgents(roomId, { includeSecrets: true });
-      const candidates = selectReactingAgents({
+      const firstCandidates = selectReactingAgents({
         agents,
-        triggerMessage,
+        triggerMessage: firstTrigger,
         roomConfig,
         responseCounts,
       });
+      for (const c of firstCandidates) {
+        const name = c.agent.name.toLowerCase();
+        if (!waveAgentNames.has(name)) {
+          waveAgentNames.add(name);
+          wave.push({ agent: c.agent, input: buildAgentInput(firstTrigger) });
+        }
+      }
 
-      if (candidates.length === 0) {
+      // Greedily pull more triggers from the queue if they target different agents
+      let i = 0;
+      while (i < triggerQueue.length && wave.length < roomConfig.maxAgentsPerCycle) {
+        const nextCandidates = selectReactingAgents({
+          agents,
+          triggerMessage: triggerQueue[i],
+          roomConfig,
+          responseCounts,
+        });
+        const independent = nextCandidates.filter((c) => !waveAgentNames.has(c.agent.name.toLowerCase()));
+        if (independent.length > 0) {
+          const nextInput = buildAgentInput(triggerQueue[i]);
+          for (const c of independent) {
+            if (wave.length >= roomConfig.maxAgentsPerCycle) break;
+            waveAgentNames.add(c.agent.name.toLowerCase());
+            wave.push({ agent: c.agent, input: nextInput });
+          }
+          triggerQueue.splice(i, 1);
+        } else {
+          i += 1;
+        }
+      }
+
+      if (wave.length === 0) {
         cycles += 1;
         continue;
       }
 
-      const input = buildAgentInput(triggerMessage);
       const results = await Promise.allSettled(
-        candidates.map(({ agent }) => this.runAgentTurn(roomId, agent.name, input)),
+        wave.map(({ agent, input }) => this.runAgentTurn(roomId, agent.name, input)),
       );
 
       for (const result of results) {
@@ -478,6 +513,20 @@ export class LangChainAgentRoomOrchestrator extends EventEmitter {
           privateMemory,
           agents,
           allowedSkillIds: allowedSkillIds.length > 0 ? allowedSkillIds : null,
+          spawnAgent: async ({ name, role, system_prompt, model_tier, tools }) => {
+            // Copy provider config from an existing agent of the same tier (or any agent as fallback)
+            const templateAgent = agents.find((a) => a.model_tier === model_tier) || agents[0];
+            const providerConfig = templateAgent?.provider_config || {};
+            createAgentRoomAgent(roomId, name, role, model_tier, system_prompt, tools, providerConfig);
+            this.emitRoomEvent(roomId, 'agent_room:agent_spawned', {
+              agent_name: name,
+              role,
+              model_tier,
+              tools,
+              spawned_by: agent.name,
+              timestamp: nowUnix(),
+            });
+          },
         },
         input,
         conversationHistory: messages,
