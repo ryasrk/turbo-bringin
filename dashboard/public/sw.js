@@ -1,4 +1,4 @@
-const CACHE_NAME = 'tenrary-x-v3';
+const CACHE_NAME = 'tenrary-x-v4';
 const SHELL_URLS = ['/', '/index.html', '/manifest.json', '/icon-192.svg', '/icon-512.svg'];
 
 function isBypassedPath(pathname) {
@@ -23,10 +23,16 @@ self.addEventListener('install', (e) => {
 });
 
 self.addEventListener('activate', (e) => {
-  // Delete ALL old caches (not just different names)
-  e.waitUntil(caches.keys().then(keys =>
-    Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
-  ));
+  e.waitUntil(
+    Promise.all([
+      // Delete ALL old caches
+      caches.keys().then(keys =>
+        Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
+      ),
+      // Enable navigation preload for faster page loads
+      self.registration.navigationPreload?.enable().catch(() => {}),
+    ])
+  );
   self.clients.claim();
 });
 
@@ -38,11 +44,13 @@ self.addEventListener('fetch', (e) => {
   if (url.origin !== self.location.origin) return;
   if (isBypassedPath(url.pathname)) return;
 
-  // Navigation: ALWAYS network-first, cache fallback for offline only
+  // Navigation: use preload response if available, cache fallback for offline
   if (request.mode === 'navigate') {
     e.respondWith((async () => {
       try {
-        const response = await fetch(request);
+        // Navigation preload fires the request in parallel with SW boot
+        const preloadResponse = await e.preloadResponse;
+        const response = preloadResponse || await fetch(request);
         const cache = await caches.open(CACHE_NAME);
         cache.put('/index.html', response.clone());
         return response;
@@ -76,18 +84,21 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
-  // Non-hashed static assets: NETWORK-FIRST to avoid stale content
+  // Non-hashed static assets: STALE-WHILE-REVALIDATE
+  // Serve cached version instantly, update cache in background
   e.respondWith((async () => {
-    try {
-      const response = await fetch(request);
-      if (response.ok) {
-        const cache = await caches.open(CACHE_NAME);
-        cache.put(request, response.clone());
-      }
+    const cache = await caches.open(CACHE_NAME);
+    const cached = await cache.match(request);
+
+    // Always revalidate in background (fire-and-forget)
+    const networkPromise = fetch(request).then(response => {
+      if (response.ok) cache.put(request, response.clone());
       return response;
-    } catch {
-      const cached = await caches.match(request);
-      return cached || Response.error();
-    }
+    }).catch(() => null);
+
+    // Return cached immediately if available, otherwise wait for network
+    if (cached) return cached;
+    const networkResponse = await networkPromise;
+    return networkResponse || Response.error();
   })());
 });
