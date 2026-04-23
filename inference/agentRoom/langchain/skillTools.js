@@ -105,14 +105,14 @@ export function createSkillTools(options = {}) {
       try {
         // Apply room-level filter
         if (allowedSet && !allowedSet.has(skill_id)) {
-          return JSON.stringify({ error: `Skill "${skill_id}" is not available in this room.` });
+          return JSON.stringify({ status: 'not_available', message: `Skill "${skill_id}" is not available in this room. Use search_skills to find available skills.` });
         }
 
         if (file_path === 'SKILL.md' || !file_path) {
           // Read the main skill content (parsed, without frontmatter)
           const skill = await getSkillContent(skill_id);
           if (!skill) {
-            return JSON.stringify({ error: `Skill "${skill_id}" not found.` });
+            return JSON.stringify({ status: 'not_found', message: `Skill "${skill_id}" not found. Use search_skills to find valid skill IDs.` });
           }
 
           return JSON.stringify({
@@ -126,7 +126,7 @@ export function createSkillTools(options = {}) {
         // Read a specific file within the skill
         const content = await readSkillFile(skill_id, file_path);
         if (content === null) {
-          return JSON.stringify({ error: `File "${file_path}" not found in skill "${skill_id}".` });
+          return JSON.stringify({ status: 'not_found', message: `File "${file_path}" not found in skill "${skill_id}". Use list_skill_files to see available files.` });
         }
 
         // Truncate very large files
@@ -139,6 +139,7 @@ export function createSkillTools(options = {}) {
           truncated,
         });
       } catch (error) {
+        console.error(`[read_skill] Error reading skill_id="${skill_id}" file_path="${file_path}":`, error.message);
         return JSON.stringify({ error: error.message });
       }
     },
@@ -167,7 +168,7 @@ export function createSkillTools(options = {}) {
     func: async ({ skill_id, path = '.' }) => {
       try {
         if (allowedSet && !allowedSet.has(skill_id)) {
-          return JSON.stringify({ error: `Skill "${skill_id}" is not available in this room.` });
+          return JSON.stringify({ status: 'not_available', message: `Skill "${skill_id}" is not available in this room. Use search_skills to find available skills.` });
         }
 
         const entries = await listSkillFiles(skill_id, path);
