@@ -17,7 +17,8 @@ import { createWorkspaceTools, createCollaborationTools } from './workspaceTools
 import { createMcpTools } from './mcpTools.js';
 import { createSkillTools } from './skillTools.js';
 
-const MAX_TOOL_ITERATIONS = 8;
+const MAX_TOOL_ITERATIONS = 20;
+const SKILL_TOOL_NAMES_SET = new Set(['search_skills', 'read_skill', 'list_skill_files']);
 const RELEVANCE_THRESHOLD = 0.3;
 const KNOWN_TOOL_NAMES = new Set([
   'list_files',
@@ -149,12 +150,12 @@ You have access to a curated skills library with expert-level knowledge for many
 UI/UX design, frontend patterns, document processing (PDF, DOCX, PPTX, XLSX), API design, brand guidelines, testing, and more.
 
 **Before starting any implementation or review**, search for relevant skills:
-1. Use **search_skills** with keywords related to your task
-2. Use **read_skill** to load the full instructions from matching skills
-3. Use **list_skill_files** to discover scripts, templates, and references bundled with skills
+1. Use **search_skills** with specific keywords from the task (e.g., "frontend web app", "API design", "PDF processing")
+2. Read only the **top 1-2 most relevant** skills using **read_skill** — don't read all results
+3. Use **list_skill_files** only if you need scripts, templates, or references from a skill
 
-Skills contain battle-tested patterns, code templates, and step-by-step guides that dramatically improve output quality.
-**You MUST search for skills at the start of every task.** Even simple tasks may have relevant skills.
+Skills contain battle-tested patterns, code templates, and step-by-step guides.
+Search once with good keywords, read the best match, then proceed with your task.
 
 ## Response Format
 Respond naturally in the conversation. When you need to use tools, describe what you're doing.
@@ -466,8 +467,8 @@ export async function runReactiveAgentTurn({
 
   // Skill search reminder — placed last so it's the most recent instruction
   messages.push(new HumanMessage(
-    '[system] REMINDER: Your FIRST action must be to call search_skills with keywords related to this task. ' +
-    'Do not skip this step. Skills contain expert patterns and templates that improve your output quality.',
+    '[system] REMINDER: Start by calling search_skills with 2-3 specific keywords from this task. ' +
+    'Then read_skill on the top result only. After that, proceed with your actual work.',
   ));
 
   // Run the agent with tool execution loop
@@ -604,7 +605,10 @@ export async function runReactiveAgentTurn({
           }
         }
 
-        executedToolCount += 1;
+        // Skill tools are free context-gathering — don't count against budget
+        if (!SKILL_TOOL_NAMES_SET.has(toolCall.tool)) {
+          executedToolCount += 1;
+        }
       }
 
       if (normalizedNativeToolCalls.length === 0) {
