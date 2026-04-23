@@ -121,6 +121,58 @@ export function appendAgentRoomMessage(message) {
   }
 }
 
+export function appendSkillEvent(payload) {
+  const container = rs.panel?.querySelector('#room-messages');
+  if (!container) return;
+
+  const agent = payload.agent_name || 'agent';
+  const tool = payload.tool || '';
+  const meta = payload.meta || {};
+  let label = '';
+  let detail = '';
+
+  if (tool === 'search_skills') {
+    const query = meta.query || '';
+    const count = meta.result_count ?? 0;
+    const topSkills = (meta.top_skills || []).slice(0, 3);
+    label = '🔍 Skill Search';
+    detail = `"${query}" → ${count} result${count !== 1 ? 's' : ''}`;
+    if (topSkills.length > 0) {
+      detail += ` (${topSkills.join(', ')})`;
+    }
+  } else if (tool === 'read_skill') {
+    const skillId = meta.skill_id || '';
+    const filePath = meta.file_path || 'SKILL.md';
+    const skillName = meta.skill_name || skillId;
+    label = '📖 Skill Read';
+    detail = filePath === 'SKILL.md'
+      ? skillName
+      : `${skillName} / ${filePath}`;
+  } else if (tool === 'list_skill_files') {
+    const skillId = meta.skill_id || '';
+    const skillPath = meta.skill_path || '.';
+    const count = meta.result_count ?? 0;
+    label = '📂 Skill Browse';
+    detail = `${skillId}${skillPath !== '.' ? '/' + skillPath : ''} (${count} entries)`;
+  } else {
+    return;
+  }
+
+  const html = `
+    <div class="room-msg room-msg-skill-event">
+      <span class="skill-event-agent">@${escapeHtml(agent)}</span>
+      <span class="skill-event-label">${label}</span>
+      <span class="skill-event-detail">${escapeHtml(detail)}</span>
+    </div>
+  `;
+
+  const wasAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 60;
+  container.insertAdjacentHTML('beforeend', html);
+  if (wasAtBottom) {
+    container.scrollTop = container.scrollHeight;
+  }
+}
+
 function renderArtifactChip(artifact) {
   const path = artifact?.path || '';
   const label = path.split('/').pop() || path || 'artifact';

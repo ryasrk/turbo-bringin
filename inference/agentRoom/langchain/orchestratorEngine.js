@@ -53,8 +53,38 @@ function buildToolLogMeta(toolResult) {
     meta.input_bytes = Buffer.byteLength(toolResult.params.new_str);
   }
 
+  // Skill tool metadata
+  if (toolResult.tool === 'search_skills') {
+    meta.query = toolResult.params?.query || '';
+    try {
+      const parsed = typeof toolResult.result === 'string' ? JSON.parse(toolResult.result) : toolResult.result;
+      meta.result_count = parsed?.results?.length || 0;
+      meta.total = parsed?.total || 0;
+      meta.top_skills = (parsed?.results || []).slice(0, 3).map((r) => r.id);
+    } catch { /* ignore */ }
+  }
+  if (toolResult.tool === 'read_skill') {
+    meta.skill_id = toolResult.params?.skill_id || '';
+    meta.file_path = toolResult.params?.file_path || 'SKILL.md';
+    try {
+      const parsed = typeof toolResult.result === 'string' ? JSON.parse(toolResult.result) : toolResult.result;
+      meta.skill_name = parsed?.name || meta.skill_id;
+      meta.truncated = parsed?.truncated || false;
+    } catch { /* ignore */ }
+  }
+  if (toolResult.tool === 'list_skill_files') {
+    meta.skill_id = toolResult.params?.skill_id || '';
+    meta.skill_path = toolResult.params?.path || '.';
+    try {
+      const parsed = typeof toolResult.result === 'string' ? JSON.parse(toolResult.result) : toolResult.result;
+      meta.result_count = parsed?.entries?.length || 0;
+    } catch { /* ignore */ }
+  }
+
   return meta;
 }
+
+const SKILL_TOOL_NAMES = new Set(['search_skills', 'read_skill', 'list_skill_files']);
 
 export function getRoomOrchestrationConfig(room) {
   const mode = room?.orchestration_mode === 'legacy' ? 'legacy' : 'reactive';
@@ -443,6 +473,16 @@ export class LangChainAgentRoomOrchestrator extends EventEmitter {
             meta: logMeta,
           },
         });
+
+        // Emit skill usage events to room chat
+        if (SKILL_TOOL_NAMES.has(toolResult.tool)) {
+          this.emitRoomEvent(roomId, 'agent_room:skill_used', {
+            agent_name: agent.name,
+            tool: toolResult.tool,
+            meta: logMeta,
+            timestamp: nowUnix(),
+          });
+        }
 
         if ((toolResult.tool === 'write_file' || toolResult.tool === 'update_file') && toolResult.params?.path) {
           fileArtifacts.push({

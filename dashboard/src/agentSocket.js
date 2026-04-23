@@ -2,7 +2,7 @@ import { getAccessToken, isAuthenticated } from './authClient.js';
 import { rs, sanitizeClassToken } from './roomsUtils.js';
 import { showToast } from './utils.js';
 import { renderAgentMembers } from './roomsUI.js';
-import { appendAgentRoomMessage } from './roomChat.js';
+import { appendAgentRoomMessage, appendSkillEvent } from './roomChat.js';
 import {
   refreshAgentFiles, openAgentFile, renderConnectionState, renderAgentProgress, renderAgentLogs,
    
@@ -96,6 +96,11 @@ export function connectAgentRoomSocket() {
       if (rs.agentRoomSelectedFile === payload.path) {
         await openAgentFile(payload.path);
       }
+      return;
+    }
+
+    if (payload.type === 'agent_room:skill_used') {
+      appendSkillEvent(payload);
       return;
     }
 

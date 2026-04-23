@@ -121,6 +121,17 @@ function formatProgressTool(tool) {
   const toolPath = String(tool.path || '').trim();
   const toolStatus = String(tool.status || '').trim().toLowerCase();
 
+  // Skill tool formatting
+  if (toolName === 'search_skills') {
+    return `🔍 search_skills • ${toolStatus || 'done'}`;
+  }
+  if (toolName === 'read_skill') {
+    return `📖 read_skill • ${toolStatus || 'done'}`;
+  }
+  if (toolName === 'list_skill_files') {
+    return `📂 list_skill_files • ${toolStatus || 'done'}`;
+  }
+
   if (toolPath && toolStatus) {
     return `${toolName} • ${toolPath} • ${toolStatus}`;
   }
@@ -624,17 +635,44 @@ function renderLogEntry(log) {
   const level = sanitizeClassToken(log?.level || 'info');
   const agentName = log?.agent_name ? `@${escapeHtml(log.agent_name)}` : 'system';
   const body = escapeHtml(log?.message || log?.content || '');
-  const meta = [];
-  if (log?.tool) meta.push(`<span class="log-tool-badge">${escapeHtml(log.tool)}</span>`);
-  if (log?.path) meta.push(`<span class="log-path-badge">📄 ${escapeHtml(log.path)}</span>`);
+  const logMeta = log?.meta || {};
+  const badges = [];
+
+  // Tool badge
+  const toolName = logMeta.tool || log?.tool || '';
+  if (toolName) badges.push(`<span class="log-tool-badge">${escapeHtml(toolName)}</span>`);
+
+  // File path badge
+  const filePath = logMeta.path || log?.path || '';
+  if (filePath) badges.push(`<span class="log-path-badge">📄 ${escapeHtml(filePath)}</span>`);
+
+  // Skill-specific badges
+  if (toolName === 'search_skills' && logMeta.query) {
+    badges.push(`<span class="log-skill-badge">🔍 "${escapeHtml(logMeta.query)}"</span>`);
+    if (logMeta.result_count != null) {
+      badges.push(`<span class="log-skill-count">${logMeta.result_count} found</span>`);
+    }
+  }
+  if (toolName === 'read_skill' && logMeta.skill_id) {
+    badges.push(`<span class="log-skill-badge">📖 ${escapeHtml(logMeta.skill_name || logMeta.skill_id)}</span>`);
+    if (logMeta.file_path && logMeta.file_path !== 'SKILL.md') {
+      badges.push(`<span class="log-path-badge">📄 ${escapeHtml(logMeta.file_path)}</span>`);
+    }
+  }
+  if (toolName === 'list_skill_files' && logMeta.skill_id) {
+    badges.push(`<span class="log-skill-badge">📂 ${escapeHtml(logMeta.skill_id)}</span>`);
+    if (logMeta.result_count != null) {
+      badges.push(`<span class="log-skill-count">${logMeta.result_count} entries</span>`);
+    }
+  }
 
   return `
-    <article class="agent-room-log log-${level}">
+    <article class="agent-room-log log-${level}${toolName.startsWith('search_skill') || toolName === 'read_skill' || toolName === 'list_skill_files' ? ' log-skill' : ''}">
       <div class="agent-room-log-header">
         <span class="agent-room-log-agent">${agentName}</span>
         <div class="agent-room-log-badges">
           <span class="agent-room-log-level">${escapeHtml(level)}</span>
-          ${meta.join('')}
+          ${badges.join('')}
         </div>
       </div>
       <div class="agent-room-log-body">${body}</div>
