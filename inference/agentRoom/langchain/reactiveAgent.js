@@ -1069,7 +1069,7 @@ function shouldContinueAfterToolRound(toolCalls, toolResults, cleanMessage, hand
     return false;
   }
 
-  const readOnlyTools = new Set(['list_files', 'read_file']);
+  const readOnlyTools = new Set(['list_files', 'read_file', 'search_skills', 'read_skill', 'list_skill_files']);
   return toolCalls.every((toolCall) => readOnlyTools.has(toolCall.tool));
 }
 
@@ -1091,7 +1091,7 @@ function shouldRequestPostToolActions({ cleanMessage, toolCalls, toolResults, ha
     return false;
   }
 
-  const readOnlyTools = new Set(['list_files', 'read_file']);
+  const readOnlyTools = new Set(['list_files', 'read_file', 'search_skills', 'read_skill', 'list_skill_files']);
   const usedMutatingTool = toolCalls.some((toolCall) => !readOnlyTools.has(toolCall.tool));
   if (!usedMutatingTool) {
     return false;
