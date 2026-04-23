@@ -623,7 +623,7 @@ export class LangChainAgentRoomOrchestrator extends EventEmitter {
             const ackResult = await runSimpleAgentTurn({
               agent,
               roomContext: { roomId, roomName: room.name, agents },
-              input: `The user asked: "${triggerContent}"\nYou are delegating this to the deep-work model which will handle it. Send a brief, honest acknowledgment (1 sentence max). Be clear you're about to work on it, NOT that you've already done it. Examples: "Let me look into that.", "On it, give me a moment.", "I'll work on that now." Do NOT describe what you'll do in detail. Do NOT pretend you've already completed the task.`,
+              input: `The user asked: "${triggerContent}"\nYou are delegating this to the deep-work model which will handle it. Send a brief, honest acknowledgment (1 sentence max). Be clear you're about to work on it, NOT that you've already done it. Examples: "Let me look into that.", "On it, give me a moment.", "I'll work on that now." Do NOT describe what you'll do in detail. Do NOT pretend you've already completed the task.\nIMPORTANT: Reply in the same language the user used. If they wrote in Indonesian, reply in Indonesian (e.g. "Aku kerjain sekarang ya.", "Siap, bentar ya.").`,
               conversationHistory: messages.slice(-2),
             });
             const ackMessage = this.postAgentMessage(roomId, agent.name, ackResult.message || '⏳ On it, give me a moment...', 'message');

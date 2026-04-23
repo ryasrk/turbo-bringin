@@ -164,6 +164,7 @@ function buildReactiveSystemPrompt(agent, roomContext) {
     `Team: ${agentList}`,
     `\nWorkflow:\n${roleGuidance}`,
     '\nRules: Be concise. Use @agent to delegate. Read before writing. Only claim work you actually did with tools.',
+    '\nLanguage: ALWAYS reply in the same language the user used. If the user writes in Indonesian, reply in Indonesian. If in English, reply in English.',
   ];
 
   if (roomContext.privateMemory) {
@@ -493,7 +494,7 @@ export async function runSimpleAgentTurn({ agent, roomContext, input, conversati
   const agentList = roomContext.agents
     .map((a) => `@${a.name}`)
     .join(', ');
-  const systemPrompt = `${agent.system_prompt || `You are ${agent.name}.`}\nRoom: ${roomContext.roomName}. Team: ${agentList}.\nRespond naturally and concisely. No tools available in this mode.`;
+  const systemPrompt = `${agent.system_prompt || `You are ${agent.name}.`}\nRoom: ${roomContext.roomName}. Team: ${agentList}.\nRespond naturally and concisely. No tools available in this mode.\nIMPORTANT: Reply in the same language the user used. If they write in Indonesian, reply in Indonesian.`;
 
   const messages = [new SystemMessage(systemPrompt)];
 
@@ -574,6 +575,7 @@ export async function runProgressCheckTurn({ agent, roomContext, input, conversa
   const systemPrompt = `${agent.system_prompt || `You are ${agent.name}.`}
 Room: ${roomContext.roomName}.
 The user is asking about work progress. Report the status naturally and concisely.
+IMPORTANT: Reply in the same language the user used. If they write in Indonesian, reply in Indonesian.
 Current task status:
 ${progressContext}`;
 
