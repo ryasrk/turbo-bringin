@@ -3002,6 +3002,10 @@ details[open] > .profile-password-toggle::before { content: '▾ '; }
   margin-top: 6px;
   font-size: 12px;
   color: var(--text-muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 .room-card-category {
   font-weight: 600; color: var(--accent); font-size: 11px;
@@ -3098,6 +3102,8 @@ details[open] > .profile-password-toggle::before { content: '▾ '; }
   background: color-mix(in srgb, var(--bg-secondary) 92%, transparent);
   flex-shrink: 0;
   backdrop-filter: blur(10px);
+  min-width: 0;
+  flex-wrap: wrap;
 }
 .room-chat-info-top {
   display: flex;
@@ -3134,6 +3140,8 @@ details[open] > .profile-password-toggle::before { content: '▾ '; }
   line-height: 1.5;
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
   backdrop-filter: blur(10px);
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 .room-note-close {
   position: absolute;
@@ -3164,10 +3172,13 @@ details[open] > .profile-password-toggle::before { content: '▾ '; }
   font-size: 14px;
   font-weight: 700;
   color: var(--text-primary);
+  word-break: break-word;
 }
 .room-note-body {
   margin-top: 4px;
   font-size: 12px;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 .room-note-chip-row {
   display: flex;
@@ -3197,10 +3208,12 @@ details[open] > .profile-password-toggle::before { content: '▾ '; }
 .room-chat-bots {
   display: flex;
   gap: 10px;
-  padding: 10px 20px 0;
+  padding: 10px 20px 6px;
   overflow-x: auto;
   overflow-y: hidden;
   scroll-snap-type: x proximity;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--text-muted) 25%, transparent) transparent;
 }
 
 .room-chat-bot-pill {
@@ -3212,10 +3225,12 @@ details[open] > .profile-password-toggle::before { content: '▾ '; }
   background: linear-gradient(180deg, color-mix(in srgb, var(--bg-primary) 68%, var(--bg-secondary)), color-mix(in srgb, var(--bg-secondary) 92%, transparent));
   box-shadow: 0 8px 18px rgba(0, 0, 0, 0.08);
   transition: transform .12s, border-color .15s, box-shadow .15s;
-  min-width: 220px;
-  max-width: 260px;
+  min-width: 200px;
+  max-width: 280px;
   flex: 0 0 auto;
   scroll-snap-align: start;
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 .room-ai-page {
@@ -3244,6 +3259,8 @@ details[open] > .profile-password-toggle::before { content: '▾ '; }
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--accent) 10%, var(--bg-secondary)), color-mix(in srgb, var(--bg-secondary) 92%, transparent));
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 .room-ai-bots {
@@ -3259,6 +3276,9 @@ details[open] > .profile-password-toggle::before { content: '▾ '; }
   border-radius: 20px;
   border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
   background: linear-gradient(180deg, color-mix(in srgb, var(--bg-secondary) 94%, transparent), color-mix(in srgb, var(--bg-primary) 92%, transparent));
+  min-width: 0;
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 .room-ai-panel-header {
@@ -3317,11 +3337,12 @@ details[open] > .profile-password-toggle::before { content: '▾ '; }
 .agent-task-item {
   display: grid;
   gap: 12px;
-  grid-template-columns: minmax(0, 1fr) minmax(220px, 280px);
+  grid-template-columns: minmax(0, 1fr) minmax(160px, 280px);
   padding: 14px 16px;
   border-radius: 18px;
   border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
   background: color-mix(in srgb, var(--bg-primary) 82%, transparent);
+  min-width: 0;
 }
 
 .agent-task-item.priority-high {
@@ -3345,6 +3366,10 @@ details[open] > .profile-password-toggle::before { content: '▾ '; }
   font-size: 14px;
   font-weight: 700;
   color: var(--text-primary);
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .agent-task-meta-row {
@@ -3389,6 +3414,8 @@ details[open] > .profile-password-toggle::before { content: '▾ '; }
   line-height: 1.6;
   color: var(--text-secondary);
   white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 .agent-task-controls {
@@ -3424,6 +3451,10 @@ details[open] > .profile-password-toggle::before { content: '▾ '; }
   font-size: 13px;
   font-weight: 700;
   color: var(--accent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 .room-chat-bot-status {
   display: inline-flex;
@@ -3437,12 +3468,16 @@ details[open] > .profile-password-toggle::before { content: '▾ '; }
   color: var(--text-secondary);
   background: color-mix(in srgb, var(--bg-primary) 74%, var(--bg-secondary));
   border: 1px solid color-mix(in srgb, var(--border) 76%, transparent);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .room-chat-bot-role {
   font-size: 11px;
   color: var(--text-secondary);
   line-height: 1.45;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 .room-chat-bot-meta {
   font-size: 10px;
@@ -3461,10 +3496,14 @@ details[open] > .profile-password-toggle::before { content: '▾ '; }
   font-size: 16px; font-weight: 700; margin: 0;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   line-height: 1.15;
+  max-width: 100%;
 }
 .room-member-count {
   font-size: 11px; color: var(--text-secondary); margin-top: 1px;
   line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .room-chat-actions {
   display: flex;
@@ -3524,6 +3563,7 @@ details[open] > .profile-password-toggle::before { content: '▾ '; }
   padding: 5px 14px; background: var(--bg-tertiary);
   border-radius: 20px; max-width: 90%;
   border: 1px solid color-mix(in srgb, var(--border) 76%, transparent);
+  word-break: break-word;
 }
 .room-msg-header {
   display: flex; gap: 12px; align-items: center; justify-content: space-between; margin-bottom: 2px;
@@ -3535,7 +3575,7 @@ details[open] > .profile-password-toggle::before { content: '▾ '; }
   min-width: 0;
   flex-wrap: wrap;
 }
-.room-msg-author { font-size: 12px; font-weight: 600; color: var(--accent); }
+.room-msg-author { font-size: 12px; font-weight: 600; color: var(--accent); max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .room-msg-time { font-size: 11px; color: var(--text-muted); }
 .room-msg-type-badge {
   display: inline-flex;
@@ -3642,11 +3682,15 @@ details[open] > .profile-password-toggle::before { content: '▾ '; }
   display: grid;
   gap: 2px;
   text-align: left;
+  min-width: 0;
 }
 .room-msg-artifact-name {
   font-size: 12px;
   font-weight: 700;
   color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ── Room Chat Body Layout (with optional agent sidebar) ── */
@@ -3734,7 +3778,7 @@ details[open] > .profile-password-toggle::before { content: '▾ '; }
     linear-gradient(180deg, color-mix(in srgb, var(--bg-secondary) 92%, transparent), color-mix(in srgb, var(--bg-primary) 85%, var(--bg-secondary)));
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: clip;
   transition: width 0.2s ease, min-width 0.2s ease, opacity 0.2s ease;
 }
 .room-agent-sidebar.collapsed {
@@ -3834,7 +3878,7 @@ details[open] > .profile-password-toggle::before { content: '▾ '; }
 .sidebar-section-body {
   overflow: hidden;
   transition: max-height 0.25s ease, opacity 0.2s ease;
-  max-height: 2000px;
+  max-height: 9999px;
   opacity: 1;
 }
 
@@ -3873,7 +3917,7 @@ details[open] > .profile-password-toggle::before { content: '▾ '; }
     width: 100%;
     max-width: 100%;
     min-width: 0;
-    max-height: 300px;
+    max-height: 40vh;
     border-left: none;
     border-top: 1px solid var(--border);
   }
@@ -4125,7 +4169,7 @@ details[open] > .profile-password-toggle::before { content: '▾ '; }
 
 .agent-room-page {
   display: grid;
-  grid-template-columns: 320px minmax(0, 1fr);
+  grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
   min-height: calc(100vh - 72px);
   background:
     radial-gradient(circle at top left, color-mix(in srgb, var(--accent) 14%, transparent) 0%, transparent 34%),
@@ -4139,6 +4183,9 @@ details[open] > .profile-password-toggle::before { content: '▾ '; }
   display: flex;
   flex-direction: column;
   gap: 16px;
+  min-width: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .agent-room-section {
@@ -4163,12 +4210,16 @@ details[open] > .profile-password-toggle::before { content: '▾ '; }
 .agent-room-section-header h3 {
   margin: 0;
   font-size: 20px;
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 .agent-room-section-header p {
   margin: 6px 0 0;
   color: var(--text-secondary);
   font-size: 13px;
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 .agent-room-mention-strip {
@@ -4212,12 +4263,16 @@ details[open] > .profile-password-toggle::before { content: '▾ '; }
 .agent-room-sidebar-header h2 {
   margin: 0;
   font-size: 22px;
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 .agent-room-sidebar-header p {
   margin: 6px 0 0;
   color: var(--text-secondary);
   font-size: 13px;
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 .agent-room-create-form {
@@ -4269,6 +4324,9 @@ details[open] > .profile-password-toggle::before { content: '▾ '; }
 
 .agent-room-list-name {
   font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .agent-room-list-meta,
@@ -4280,6 +4338,8 @@ details[open] > .profile-password-toggle::before { content: '▾ '; }
 .agent-room-main {
   padding: 24px;
   min-width: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .agent-room-empty {
@@ -4309,6 +4369,7 @@ details[open] > .profile-password-toggle::before { content: '▾ '; }
   display: grid;
   gap: 18px;
   min-height: 0;
+  min-width: 0;
   height: 100%;
 }
 
@@ -4326,11 +4387,13 @@ details[open] > .profile-password-toggle::before { content: '▾ '; }
 .agent-room-header h3 {
   margin: 0;
   font-size: 24px;
+  word-break: break-word;
 }
 
 .agent-room-header p {
   margin: 8px 0 10px;
   color: var(--text-secondary);
+  word-break: break-word;
 }
 
 .agent-room-header-meta {
@@ -4401,7 +4464,7 @@ details[open] > .profile-password-toggle::before { content: '▾ '; }
 
 .agent-room-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.3fr) minmax(340px, 0.9fr);
+  grid-template-columns: minmax(0, 1.3fr) minmax(280px, 0.9fr);
   gap: 18px;
   min-height: 0;
   flex: 1;
@@ -4418,6 +4481,7 @@ details[open] > .profile-password-toggle::before { content: '▾ '; }
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
   min-height: 0;
+  min-width: 0;
   overflow: hidden;
 }
 
@@ -4436,6 +4500,10 @@ details[open] > .profile-password-toggle::before { content: '▾ '; }
   background: color-mix(in srgb, var(--bg-primary) 66%, var(--bg-secondary));
   display: grid;
   gap: 6px;
+  min-width: 0;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  min-width: 0;
 }
 
 .agent-status-card.status-running {
@@ -4458,12 +4526,21 @@ details[open] > .profile-password-toggle::before { content: '▾ '; }
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.agent-status-header strong {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .agent-status-role,
 .agent-status-tier {
   font-size: 12px;
   color: var(--text-secondary);
+  word-break: break-word;
 }
 
 /* ── Agent Confidence Badges ──────────────────────────────────── */
@@ -4641,6 +4718,8 @@ details[open] > .profile-password-toggle::before { content: '▾ '; }
   white-space: pre-wrap;
   line-height: 1.4;
   font-size: 11px;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .agent-room-composer {
@@ -4679,6 +4758,8 @@ details[open] > .profile-password-toggle::before { content: '▾ '; }
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 .agent-room-panel-header p {
@@ -4686,6 +4767,8 @@ details[open] > .profile-password-toggle::before { content: '▾ '; }
   font-size: 11px;
   color: var(--text-secondary);
   line-height: 1.35;
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 /* Sidebar section content padding */
@@ -4801,7 +4884,7 @@ details[open] > .profile-password-toggle::before { content: '▾ '; }
 
 .agent-room-file-path,
 .agent-file-path {
-  word-break: break-all;
+  word-break: break-word;
   font-size: 10px;
   color: var(--text-secondary);
   opacity: 0.82;
@@ -4831,6 +4914,8 @@ details[open] > .profile-password-toggle::before { content: '▾ '; }
   white-space: pre-wrap;
   font-size: 11px;
   line-height: 1.4;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 1200px) {
@@ -4877,6 +4962,14 @@ details[open] > .profile-password-toggle::before { content: '▾ '; }
   }
 
   .agent-room-composer {
+    grid-template-columns: 1fr;
+  }
+
+  .agent-task-item {
+    grid-template-columns: 1fr;
+  }
+
+  .agent-task-form-row {
     grid-template-columns: 1fr;
   }
 }
@@ -5084,7 +5177,7 @@ details[open] > .profile-password-toggle::before { content: '▾ '; }
 
 .artifact-path {
   font-weight: 600;
-  word-break: break-all;
+  word-break: break-word;
   color: var(--accent);
 }
 
@@ -5457,7 +5550,7 @@ details[open] > .profile-password-toggle::before { content: '▾ '; }
   padding: 18px;
   min-height: 0;
   flex: 1;
-  overflow: hidden;
+  overflow: clip;
 }
 
 .workspace-sidebar {
@@ -5648,6 +5741,10 @@ details[open] > .profile-password-toggle::before { content: '▾ '; }
   margin: 0;
   font-size: 14px;
   font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .workspace-preview-header p {
@@ -5655,6 +5752,7 @@ details[open] > .profile-password-toggle::before { content: '▾ '; }
   font-size: 12px;
   line-height: 1.5;
   color: var(--text-secondary);
+  word-break: break-word;
 }
 
 .workspace-preview-body {
