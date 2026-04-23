@@ -15,9 +15,9 @@ test('getRoomOrchestrationConfig defaults to reactive mode and clamps autonomy',
     {
       mode: 'reactive',
       autonomyLevel: 3,
-      maxCycles: 15,
+      maxCycles: 20,
       maxAgentsPerCycle: 4,
-      maxTurnsPerAgent: 3,
+      maxTurnsPerAgent: 4,
     },
   );
 
@@ -26,9 +26,9 @@ test('getRoomOrchestrationConfig defaults to reactive mode and clamps autonomy',
     {
       mode: 'reactive',
       autonomyLevel: 0,
-      maxCycles: 6,
+      maxCycles: 8,
       maxAgentsPerCycle: 1,
-      maxTurnsPerAgent: 1,
+      maxTurnsPerAgent: 2,
     },
   );
 });

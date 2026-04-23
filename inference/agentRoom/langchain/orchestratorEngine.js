@@ -94,9 +94,9 @@ export function getRoomOrchestrationConfig(room) {
   return {
     mode,
     autonomyLevel,
-    maxCycles: mode === 'legacy' ? 4 : 6 + (autonomyLevel * 3),
+    maxCycles: mode === 'legacy' ? 4 : 8 + (autonomyLevel * 4),
     maxAgentsPerCycle: mode === 'legacy' ? 1 : clamp(autonomyLevel + 1, 1, 4),
-    maxTurnsPerAgent: mode === 'legacy' ? 1 : clamp(autonomyLevel, 1, 3),
+    maxTurnsPerAgent: mode === 'legacy' ? 1 : clamp(autonomyLevel + 1, 2, 5),
   };
 }
 
@@ -402,6 +402,7 @@ export class LangChainAgentRoomOrchestrator extends EventEmitter {
         const count = responseCounts.get(result.value.agentName) || 0;
         responseCounts.set(result.value.agentName, count + 1);
 
+        let triggeredRework = false;
         for (const message of result.value.postedMessages) {
           // ── Quality Gate: detect reviewer verdict ──
           const verdict = detectReviewVerdict(message);
@@ -414,6 +415,7 @@ export class LangChainAgentRoomOrchestrator extends EventEmitter {
             });
           } else if (verdict === 'rework' && reworkCycles < MAX_REWORK_CYCLES) {
             reworkCycles += 1;
+            triggeredRework = true;
             this.emitRoomEvent(roomId, 'agent_room:quality_gate', {
               verdict: 'rework',
               reviewer: message.sender_name,
@@ -437,6 +439,16 @@ export class LangChainAgentRoomOrchestrator extends EventEmitter {
           }
 
           triggerQueue.push(message);
+        }
+
+        // Don't count rework-triggered turns against the agent's budget.
+        // Rework is a quality mechanism, not a voluntary response.
+        if (triggeredRework) {
+          const reworkTarget = 'coder';
+          const currentCount = responseCounts.get(reworkTarget) || 0;
+          if (currentCount > 0) {
+            responseCounts.set(reworkTarget, currentCount - 1);
+          }
         }
       }
 
