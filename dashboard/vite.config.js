@@ -1,6 +1,44 @@
 import { defineConfig, loadEnv } from 'vite'
 import { compression } from 'vite-plugin-compression2'
 
+/**
+ * Add fetchpriority hints to critical resources in production builds.
+ * - CSS: fetchpriority="high" (render-blocking, needed ASAP)
+ * - Entry JS modulepreload: fetchpriority="high"
+ * - Non-critical chunk preloads: fetchpriority="low"
+ */
+function resourceHintsPlugin() {
+  return {
+    name: 'resource-hints',
+    transformIndexHtml: {
+      order: 'post',
+      handler(html, ctx) {
+        if (ctx.server) return html; // Dev only
+
+        // Add fetchpriority="high" to the main CSS link
+        html = html.replace(
+          /(<link\s+rel="stylesheet"[^>]*href="[^"]*index-[^"]*\.css")/g,
+          '$1 fetchpriority="high"'
+        );
+
+        // Add fetchpriority="high" to the entry module script
+        html = html.replace(
+          /(<script\s+type="module"[^>]*src="[^"]*index-[^"]*\.js")/g,
+          '$1 fetchpriority="high"'
+        );
+
+        // Add fetchpriority="low" to non-entry modulepreload links (chunks)
+        html = html.replace(
+          /(<link\s+rel="modulepreload"[^>]*href="[^"]*(?:rooms|chat|auth)-[^"]*\.js")/g,
+          '$1 fetchpriority="low"'
+        );
+
+        return html;
+      },
+    },
+  };
+}
+
 /** Inject CSP meta tag only in production builds (dev needs inline scripts for HMR). */
 function cspPlugin() {
   const csp = [
@@ -70,6 +108,8 @@ export default defineConfig(({ mode }) => {
     plugins: [
       // Inject CSP only in production (dev needs inline scripts for Vite HMR)
       cspPlugin(),
+      // Add fetchpriority hints to critical resources
+      resourceHintsPlugin(),
       // Pre-compress static assets at build time (Brotli level 11 — max compression)
       compression({ algorithm: 'brotliCompress', exclude: [/\.(png|jpg|jpeg|gif|webp|avif)$/i] }),
       // Also generate gzip for clients that don't support Brotli
