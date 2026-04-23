@@ -1,4 +1,4 @@
-const CACHE_NAME = 'tenrary-x-v2';
+const CACHE_NAME = 'tenrary-x-v3';
 const SHELL_URLS = ['/', '/index.html', '/manifest.json', '/icon-192.svg', '/icon-512.svg'];
 
 function isBypassedPath(pathname) {
@@ -6,6 +6,11 @@ function isBypassedPath(pathname) {
     || pathname.startsWith('/manager/')
     || pathname.startsWith('/v1/')
     || pathname.startsWith('/ws/');
+}
+
+function isHashedAsset(pathname) {
+  // Vite hashed assets: /assets/index-BEWTAvrf.css, /assets/index-DloD6SnS.js
+  return /\/assets\/[^/]+-[a-zA-Z0-9]{8}\.\w+$/.test(pathname);
 }
 
 function isStaticAsset(pathname) {
@@ -18,6 +23,7 @@ self.addEventListener('install', (e) => {
 });
 
 self.addEventListener('activate', (e) => {
+  // Delete ALL old caches (not just different names)
   e.waitUntil(caches.keys().then(keys =>
     Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
   ));
@@ -32,6 +38,7 @@ self.addEventListener('fetch', (e) => {
   if (url.origin !== self.location.origin) return;
   if (isBypassedPath(url.pathname)) return;
 
+  // Navigation: ALWAYS network-first, cache fallback for offline only
   if (request.mode === 'navigate') {
     e.respondWith((async () => {
       try {
@@ -48,10 +55,29 @@ self.addEventListener('fetch', (e) => {
 
   if (!isStaticAsset(url.pathname)) return;
 
-  e.respondWith((async () => {
-    const cached = await caches.match(request);
-    if (cached) return cached;
+  // Hashed assets (Vite content-hashed filenames): cache-first is safe
+  // because the hash changes when content changes
+  if (isHashedAsset(url.pathname)) {
+    e.respondWith((async () => {
+      const cached = await caches.match(request);
+      if (cached) return cached;
 
+      try {
+        const response = await fetch(request);
+        if (response.ok) {
+          const cache = await caches.open(CACHE_NAME);
+          cache.put(request, response.clone());
+        }
+        return response;
+      } catch {
+        return Response.error();
+      }
+    })());
+    return;
+  }
+
+  // Non-hashed static assets: NETWORK-FIRST to avoid stale content
+  e.respondWith((async () => {
     try {
       const response = await fetch(request);
       if (response.ok) {
@@ -60,7 +86,8 @@ self.addEventListener('fetch', (e) => {
       }
       return response;
     } catch {
-      return Response.error();
+      const cached = await caches.match(request);
+      return cached || Response.error();
     }
   })());
 });
