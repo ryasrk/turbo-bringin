@@ -779,12 +779,30 @@ summary:focus-visible {
 
 .message-content li { margin: 4px 0; }
 
+.message-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+}
+
 .message-stats {
   display: flex;
   gap: 12px;
-  margin-top: 6px;
   font-size: 11px;
   color: var(--text-muted);
+}
+
+.message-actions {
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.message:hover .message-actions {
+  opacity: 1;
 }
 
 .live-stats {
@@ -1722,10 +1740,9 @@ summary:focus-visible {
 /* Legacy #stop-btn override kept for specificity */
 #stop-btn { /* inherits .send-btn.stop-btn styles */ }
 
-/* ── Edit, Regen & Copy Message Buttons ─────────── */
+/* ── Edit & Regen Buttons ───────────────────────── */
 .edit-msg-btn,
-.regen-btn,
-.copy-msg-btn {
+.regen-btn {
   background: none;
   border: none;
   cursor: pointer;
@@ -1737,22 +1754,44 @@ summary:focus-visible {
 }
 
 .message:hover .edit-msg-btn,
-.message:hover .regen-btn,
-.message:hover .copy-msg-btn {
+.message:hover .regen-btn {
   opacity: 0.7;
 }
 
 .edit-msg-btn:hover,
-.regen-btn:hover,
-.copy-msg-btn:hover {
+.regen-btn:hover {
   opacity: 1 !important;
   background: var(--bg-tertiary);
 }
 
 .edit-msg-btn:focus-visible,
-.regen-btn:focus-visible,
-.copy-msg-btn:focus-visible {
+.regen-btn:focus-visible {
   opacity: 1 !important;
+  background: var(--bg-tertiary);
+}
+
+/* ── Copy Message Button (in message footer) ────── */
+.copy-msg-btn {
+  background: none;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+  white-space: nowrap;
+}
+
+.copy-msg-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--text-muted);
+  background: var(--bg-tertiary);
+}
+
+.copy-msg-btn:focus-visible {
+  color: var(--text-primary);
+  border-color: var(--text-muted);
   background: var(--bg-tertiary);
 }
 

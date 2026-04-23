@@ -586,10 +586,33 @@ export async function sendToAPI() {
     const statsHtml = activeModel
       ? `${tokenCount} tokens • ${elapsed.toFixed(2)}s • ${tps} t/s • ${state.mode} • ${activeModel}`
       : `${tokenCount} tokens • ${elapsed.toFixed(2)}s • ${tps} t/s • ${state.mode}`;
+    const footerEl = document.createElement('div');
+    footerEl.className = 'message-footer';
     const statsEl = document.createElement('div');
     statsEl.className = 'message-stats';
     statsEl.textContent = statsHtml;
-    streamEl.querySelector('.message-body').appendChild(statsEl);
+    footerEl.appendChild(statsEl);
+    const actionsEl = document.createElement('div');
+    actionsEl.className = 'message-actions';
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'copy-msg-btn';
+    copyBtn.title = 'Copy message';
+    copyBtn.textContent = '📋 Copy';
+    copyBtn.addEventListener('click', async () => {
+      const contentEl = streamEl.querySelector('.message-content');
+      const text = contentEl?.innerText || contentEl?.textContent || '';
+      try {
+        await navigator.clipboard.writeText(text);
+        copyBtn.textContent = '✅';
+        setTimeout(() => { copyBtn.textContent = '📋 Copy'; }, 2000);
+      } catch {
+        copyBtn.textContent = '❌';
+        setTimeout(() => { copyBtn.textContent = '📋 Copy'; }, 2000);
+      }
+    });
+    actionsEl.appendChild(copyBtn);
+    footerEl.appendChild(actionsEl);
+    streamEl.querySelector('.message-body').appendChild(footerEl);
 
     const metaEl = streamEl.querySelector('.message-meta');
     if (metaEl && !metaEl.querySelector('.regen-btn')) {
