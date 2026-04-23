@@ -12,7 +12,7 @@
  */
 
 import { HumanMessage, SystemMessage, AIMessage, ToolMessage } from '@langchain/core/messages';
-import { createAgentModel } from './chatModelAdapter.js';
+import { createAgentModel, createRouterModel } from './chatModelAdapter.js';
 import { createWorkspaceTools, createCollaborationTools } from './workspaceTools.js';
 import { createMcpTools } from './mcpTools.js';
 import { createSkillTools } from './skillTools.js';
@@ -389,12 +389,69 @@ function buildTextToolFollowUpMessage(toolResults) {
   return `[system] Tool results:\n${formatToolResultsForPrompt(toolResults)}\n\nContinue working on the task. In text tool mode, your next response must either:\n1. include at least one JSON tool block for the next concrete action, or\n2. provide the final answer if the task is complete.\nDo not only describe intended future actions.${errorGuidance}`;
 }
 
+// ── xa Router Classification ───────────────────────────────────
+
+const XA_CLASSIFY_PROMPT = `You are a message router for an AI agent team. Classify the user's message.
+
+Reply with EXACTLY one word:
+- CHAT — greetings, thanks, acknowledgments, casual conversation, simple questions about yourself
+- DELEGATE — requests that need tools, file operations, code generation, analysis, planning, or deep reasoning
+
+Examples:
+"hi" → CHAT
+"thanks!" → CHAT
+"how are you?" → CHAT
+"keren broo" → CHAT
+"explain recursion" → DELEGATE
+"create a file" → DELEGATE
+"@coder fix the bug" → DELEGATE
+"what files are in the workspace?" → DELEGATE
+
+Reply with one word only: CHAT or DELEGATE`;
+
 /**
- * Lightweight agent turn for simple queries (greetings, acknowledgments, short chat).
- * Uses a minimal system prompt, no tools, no workspace listing — saves ~80% tokens.
+ * Use the xa (router) model to classify a message as CHAT or DELEGATE.
+ * Falls back to JS heuristic if xa fails or is unavailable.
+ *
+ * @param {Object} agent - Agent definition with router_config
+ * @param {string} userContent - Raw user message content
+ * @returns {Promise<'chat' | 'delegate'>}
+ */
+export async function classifyWithRouter(agent, userContent) {
+  // Fast-path: obvious cases skip the LLM entirely
+  if (isSimpleQuery(userContent)) return 'chat';
+
+  const routerModel = createRouterModel(agent);
+  // If no router config, fall back to heuristic (always delegate for non-simple)
+  if (!agent.router_config || Object.keys(agent.router_config).length === 0) {
+    return 'delegate';
+  }
+
+  try {
+    const messages = [
+      new SystemMessage(XA_CLASSIFY_PROMPT),
+      new HumanMessage(userContent),
+    ];
+    const result = await routerModel.invoke(messages);
+    const raw = normalizeResponseContent(result.content).trim().toUpperCase();
+
+    if (raw.includes('CHAT')) return 'chat';
+    if (raw.includes('DELEGATE')) return 'delegate';
+    // Ambiguous response — default to delegate (safer)
+    console.log(`[${agent.name}] xa classify ambiguous: "${raw}" → defaulting to delegate`);
+    return 'delegate';
+  } catch (error) {
+    console.error(`[${agent.name}] xa classify failed:`, error.message, '→ falling back to delegate');
+    return 'delegate';
+  }
+}
+
+/**
+ * Lightweight agent turn handled entirely by xa (router model).
+ * Used for chat/greetings/simple questions — no tools, no workspace listing.
  */
 export async function runSimpleAgentTurn({ agent, roomContext, input, conversationHistory }) {
-  const baseModel = createAgentModel(agent);
+  const routerModel = createRouterModel(agent);
 
   // Minimal system prompt — just identity and recent context
   const agentList = roomContext.agents
@@ -421,11 +478,11 @@ export async function runSimpleAgentTurn({ agent, roomContext, input, conversati
   messages.push(new HumanMessage(input));
 
   try {
-    const result = await baseModel.invoke(messages);
+    const result = await routerModel.invoke(messages);
     const content = normalizeResponseContent(result.content);
     const usage = result.additional_kwargs?.usage || {};
 
-    console.log(`[${agent.name}] Simple turn — ${usage.total_tokens || 0} tokens (fast-path)`);
+    console.log(`[${agent.name}] xa turn — ${usage.total_tokens || 0} tokens (router model)`);
 
     return {
       message: content || 'Got it.',
@@ -442,7 +499,7 @@ export async function runSimpleAgentTurn({ agent, roomContext, input, conversati
       confidence: 0.8,
     };
   } catch (error) {
-    console.error(`[${agent.name}] Simple turn failed:`, error.message);
+    console.error(`[${agent.name}] xa turn failed:`, error.message);
     return {
       message: 'Got it.',
       toolResults: [],

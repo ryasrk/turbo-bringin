@@ -171,7 +171,7 @@ export class AgentRoomChatModel extends BaseChatModel {
 }
 
 /**
- * Factory: create a LangChain ChatModel for a specific agent.
+ * Factory: create a LangChain ChatModel for a specific agent (xb — deep work model).
  */
 export function createAgentModel(agent) {
   return new AgentRoomChatModel({
@@ -181,5 +181,27 @@ export function createAgentModel(agent) {
       : null,
     systemPrompt: agent.system_prompt || `You are ${agent.name}.`,
     modelName: `${agent.name}-${agent.model_tier}`,
+  });
+}
+
+/**
+ * Factory: create a LangChain ChatModel for the agent's router (xa — fast local model).
+ * Falls back to the main agent model if no router_config is set.
+ */
+export function createRouterModel(agent) {
+  const routerConfig = agent.router_config && Object.keys(agent.router_config).length > 0
+    ? agent.router_config
+    : null;
+
+  if (!routerConfig) {
+    // No router config — fall back to main model
+    return createAgentModel(agent);
+  }
+
+  return new AgentRoomChatModel({
+    tier: 'cheap_worker',
+    providerConfig: routerConfig,
+    systemPrompt: '', // Router uses its own minimal prompts
+    modelName: `${agent.name}-router`,
   });
 }

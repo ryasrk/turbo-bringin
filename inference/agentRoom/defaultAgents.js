@@ -6,6 +6,11 @@ import '../loadEnv.js';
 const ENOWXAI_BRAIN_MODEL = process.env.ENOWXAI_BRAIN_MODEL || 'gpt-5.4';
 const ENOWXAI_WORKER_MODEL = process.env.ENOWXAI_WORKER_MODEL || 'gemini-2.5-flash';
 
+// xa (router) model — local small model for classification and simple chat.
+// Set AGENT_ROUTER_PORT to the port of your local model server (default: 18080).
+const AGENT_ROUTER_PORT = parseInt(process.env.AGENT_ROUTER_PORT, 10) || 18080;
+const AGENT_ROUTER_MODEL = process.env.AGENT_ROUTER_MODEL || 'local';
+
 function buildEnowxaiProviderConfig({ tier = 'worker', maxTokens, temperature }) {
   return {
     provider: 'enowxai',
@@ -13,6 +18,16 @@ function buildEnowxaiProviderConfig({ tier = 'worker', maxTokens, temperature })
     max_tokens: maxTokens,
     temperature,
     tool_calling_mode: 'native',
+  };
+}
+
+function buildRouterConfig() {
+  return {
+    provider: 'local',
+    base_url: `http://127.0.0.1:${AGENT_ROUTER_PORT}`,
+    model: AGENT_ROUTER_MODEL,
+    max_tokens: 512,
+    temperature: 0.1,
   };
 }
 
@@ -29,6 +44,7 @@ export const DEFAULT_AGENT_DEFINITIONS = [
     ].join(' '),
     tools: ['list_files', 'read_file', 'write_file', 'update_file'],
     provider_config: buildEnowxaiProviderConfig({ tier: 'brain', maxTokens: 8192, temperature: 0.3 }),
+    router_config: buildRouterConfig(),
   },
   {
     name: 'coder',
@@ -42,6 +58,7 @@ export const DEFAULT_AGENT_DEFINITIONS = [
     ].join(' '),
     tools: ['list_files', 'read_file', 'write_file', 'update_file', 'run_python'],
     provider_config: buildEnowxaiProviderConfig({ tier: 'worker', maxTokens: 4096, temperature: 0.2 }),
+    router_config: buildRouterConfig(),
   },
   {
     name: 'reviewer',
@@ -55,6 +72,7 @@ export const DEFAULT_AGENT_DEFINITIONS = [
     ].join(' '),
     tools: ['list_files', 'read_file', 'write_file', 'run_python'],
     provider_config: buildEnowxaiProviderConfig({ tier: 'worker', maxTokens: 4096, temperature: 0.2 }),
+    router_config: buildRouterConfig(),
   },
   {
     name: 'scribe',
@@ -67,6 +85,7 @@ export const DEFAULT_AGENT_DEFINITIONS = [
     ].join(' '),
     tools: ['list_files', 'read_file', 'write_file'],
     provider_config: buildEnowxaiProviderConfig({ tier: 'worker', maxTokens: 4096, temperature: 0.2 }),
+    router_config: buildRouterConfig(),
   },
 ];
 

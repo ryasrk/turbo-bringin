@@ -652,6 +652,7 @@ export async function handleAgentRoomRoute(path, url, req, res) {
       const systemPrompt = String(body.system_prompt || '').trim();
       const tools = sanitizeAgentTools(body.tools);
       const providerConfig = sanitizeProviderConfig(body.provider_config);
+      const routerConfig = sanitizeProviderConfig(body.router_config);
 
       if (!/^[a-z][a-z0-9_-]{1,31}$/.test(name)) {
         sendJson(res, 400, { error: 'Agent name must be 2-32 chars using letters, numbers, underscores, hyphens' });
@@ -666,7 +667,7 @@ export async function handleAgentRoomRoute(path, url, req, res) {
         return true;
       }
 
-      createAgentRoomAgent(room.id, name, role, modelTier, systemPrompt, tools, providerConfig);
+      createAgentRoomAgent(room.id, name, role, modelTier, systemPrompt, tools, providerConfig, routerConfig);
       sendJson(res, 201, { agents: listAgentRoomAgents(room.id) });
     } catch (error) {
       sendJson(res, 400, { error: error.message || 'Failed to add agent' });
@@ -698,6 +699,9 @@ export async function handleAgentRoomRoute(path, url, req, res) {
       const providerConfig = body.provider_config !== undefined
         ? sanitizeProviderConfig(body.provider_config)
         : existing.provider_config;
+      const routerConfig = body.router_config !== undefined
+        ? sanitizeProviderConfig(body.router_config)
+        : existing.router_config;
 
       if (!role) {
         sendJson(res, 400, { error: 'role cannot be empty' });
@@ -708,7 +712,7 @@ export async function handleAgentRoomRoute(path, url, req, res) {
         return true;
       }
 
-      updateAgentRoomAgent(room.id, agentName, { role, model_tier: modelTier, system_prompt: systemPrompt, tools, provider_config: providerConfig });
+      updateAgentRoomAgent(room.id, agentName, { role, model_tier: modelTier, system_prompt: systemPrompt, tools, provider_config: providerConfig, router_config: routerConfig });
       sendJson(res, 200, { agents: listAgentRoomAgents(room.id) });
     } catch (error) {
       sendJson(res, 400, { error: error.message || 'Failed to update agent' });

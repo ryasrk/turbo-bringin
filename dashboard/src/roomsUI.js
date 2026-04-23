@@ -385,7 +385,8 @@ export function createRoomsView() {
           <!-- Tab navigation -->
           <div class="agent-config-tabs">
             <button type="button" class="agent-config-tab active" data-tab="identity">Identity</button>
-            <button type="button" class="agent-config-tab" data-tab="provider">Model & Provider</button>
+            <button type="button" class="agent-config-tab" data-tab="provider">Model (xb)</button>
+            <button type="button" class="agent-config-tab" data-tab="router">Router (xa)</button>
           </div>
 
           <!-- Tab: Identity -->
@@ -462,6 +463,41 @@ export function createRoomsView() {
               <div class="form-group" id="agent-temperature-group" style="display:none">
                 <label for="agent-temperature-input">Temperature</label>
                 <input type="number" id="agent-temperature-input" min="0" max="2" step="0.05" placeholder="0.3" />
+              </div>
+          </div>
+
+          <!-- Tab: Router (xa) — local fast model for classification & chat -->
+          <div class="agent-config-tab-panel" data-tab-panel="router">
+              <p class="form-hint" style="margin-bottom:8px">
+                The router model (xa) handles message classification and simple chat locally.
+                Leave empty to skip xa and always use the main model (xb).
+              </p>
+              <div class="form-group">
+                <label for="router-provider-input">Router Provider</label>
+                <select id="router-provider-input">
+                  <option value="" selected>Disabled (no router)</option>
+                  <option value="local">Local (Bonsai-8B / llama-server)</option>
+                  <option value="enowxai">EnowxAI (Gateway)</option>
+                  <option value="openai">OpenAI</option>
+                  <option value="custom">Custom (OpenAI-compatible)</option>
+                </select>
+                <small class="form-hint">Small, fast model for routing decisions.</small>
+              </div>
+              <div class="form-group" id="router-base-url-group" style="display:none">
+                <label for="router-base-url-input">Base URL</label>
+                <input type="url" id="router-base-url-input" placeholder="http://127.0.0.1:18080" />
+              </div>
+              <div class="form-group" id="router-api-key-group" style="display:none">
+                <label for="router-api-key-input">API Key</label>
+                <input type="password" id="router-api-key-input" placeholder="sk-..." autocomplete="off" />
+              </div>
+              <div class="form-group" id="router-model-group" style="display:none">
+                <label for="router-model-input">Model Name</label>
+                <input type="text" id="router-model-input" placeholder="local" maxlength="200" />
+              </div>
+              <div class="form-group" id="router-max-tokens-group" style="display:none">
+                <label for="router-max-tokens-input">Max Tokens</label>
+                <input type="number" id="router-max-tokens-input" min="64" max="4096" step="64" placeholder="512" />
               </div>
           </div>
 

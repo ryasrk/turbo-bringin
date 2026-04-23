@@ -57,6 +57,12 @@ if (agentRoomColumns.length > 0 && !agentRoomColumns.some((column) => column.nam
   db.exec('ALTER TABLE agent_rooms ADD COLUMN autonomy_level INTEGER DEFAULT 2');
 }
 
+// Migrate agent_room_agents: add router_config_json column for dual-model (xa/xb) architecture
+const agentColumns = db.query('PRAGMA table_info(agent_room_agents)').all();
+if (agentColumns.length > 0 && !agentColumns.some((c) => c.name === 'router_config_json')) {
+  db.exec("ALTER TABLE agent_room_agents ADD COLUMN router_config_json TEXT DEFAULT '{}'");
+}
+
 // Migrate agent_room_messages: add artifacts column
 const msgColumns = db.query('PRAGMA table_info(agent_room_messages)').all();
 if (msgColumns.length > 0 && !msgColumns.some((c) => c.name === 'artifacts')) {
@@ -220,8 +226,8 @@ const stmts = {
 
   // Agent room agents
   createAgentRoomAgent: db.query(`
-    INSERT INTO agent_room_agents (id, room_id, name, role, model_tier, system_prompt, tools_json, provider_config_json)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO agent_room_agents (id, room_id, name, role, model_tier, system_prompt, tools_json, provider_config_json, router_config_json)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `),
   listAgentRoomAgents: readDb.query(`
     SELECT * FROM agent_room_agents
@@ -239,7 +245,7 @@ const stmts = {
   `),
   updateAgentRoomAgent: db.query(`
     UPDATE agent_room_agents
-    SET role = ?, model_tier = ?, system_prompt = ?, tools_json = ?, provider_config_json = ?, updated_at = unixepoch()
+    SET role = ?, model_tier = ?, system_prompt = ?, tools_json = ?, provider_config_json = ?, router_config_json = ?, updated_at = unixepoch()
     WHERE room_id = ? AND name = ?
   `),
   deleteAgentRoomAgent: db.query(`
@@ -652,9 +658,9 @@ export function deleteAgentRoom(id, ownerId) {
   return stmts.deleteAgentRoom.run(id, ownerId);
 }
 
-export function createAgentRoomAgent(roomId, name, role, modelTier, systemPrompt = '', tools = [], providerConfig = {}) {
+export function createAgentRoomAgent(roomId, name, role, modelTier, systemPrompt = '', tools = [], providerConfig = {}, routerConfig = {}) {
   const id = uuid();
-  stmts.createAgentRoomAgent.run(id, roomId, name, role, modelTier, systemPrompt, JSON.stringify(tools), JSON.stringify(providerConfig));
+  stmts.createAgentRoomAgent.run(id, roomId, name, role, modelTier, systemPrompt, JSON.stringify(tools), JSON.stringify(providerConfig), JSON.stringify(routerConfig));
   touchAgentRoom(roomId);
   return id;
 }
@@ -682,8 +688,10 @@ function serializeAgentRoomAgent(row, includeSecrets = false) {
     ...row,
     tools_json: undefined,
     provider_config_json: undefined,
+    router_config_json: undefined,
     tools: JSON.parse(row.tools_json || '[]'),
     provider_config: serializeProviderConfig(JSON.parse(row.provider_config_json || '{}'), includeSecrets),
+    router_config: serializeProviderConfig(JSON.parse(row.router_config_json || '{}'), includeSecrets),
   };
 }
 
@@ -701,13 +709,14 @@ export function updateAgentRoomAgentStatus(roomId, name, status) {
   return stmts.updateAgentRoomAgentStatus.run(status, roomId, name);
 }
 
-export function updateAgentRoomAgent(roomId, name, { role, model_tier, system_prompt, tools, provider_config }) {
+export function updateAgentRoomAgent(roomId, name, { role, model_tier, system_prompt, tools, provider_config, router_config }) {
   const result = stmts.updateAgentRoomAgent.run(
     role,
     model_tier,
     system_prompt || '',
     JSON.stringify(tools || []),
     JSON.stringify(provider_config || {}),
+    JSON.stringify(router_config || {}),
     roomId,
     name,
   );

@@ -17,7 +17,7 @@ import {
 } from '../../db/database.js';
 import { listFiles } from '../fileTools.js';
 import { broadcastAgentRoomEvent } from '../wsBridge.js';
-import { runReactiveAgentTurn, runSimpleAgentTurn, shouldAgentRespond, isSimpleQuery } from './reactiveAgent.js';
+import { runReactiveAgentTurn, runSimpleAgentTurn, shouldAgentRespond, isSimpleQuery, classifyWithRouter } from './reactiveAgent.js';
 
 const DEFAULT_AUTONOMY_LEVEL = 2;
 const MAX_VISIBLE_HISTORY = 40;
@@ -564,10 +564,11 @@ export class LangChainAgentRoomOrchestrator extends EventEmitter {
       const roomSkills = listRoomSkills(roomId);
       const allowedSkillIds = roomSkills.map((s) => s.skill_id);
 
-      // ── Simple Query Fast-Path ──────────────────────────────
-      // Detect simple messages (greetings, acknowledgments, short chat) and
-      // use a lightweight LLM call — no tools, no workspace listing, minimal prompt.
-      const useSimplePath = isSimpleQuery(triggerContent);
+      // ── xa Router Classification ──────────────────────────────
+      // Use the xa (router) model to classify: CHAT → fast-path, DELEGATE → full ReAct.
+      // Falls back to JS heuristic if no router_config is set.
+      const classification = await classifyWithRouter(agent, triggerContent);
+      const useSimplePath = classification === 'chat';
 
       if (useSimplePath) {
         saveAgentRoomLog(roomId, agent.name, 'info', 'Simple query fast-path', {
@@ -619,7 +620,8 @@ export class LangChainAgentRoomOrchestrator extends EventEmitter {
               spawnAgent: async ({ name, role, system_prompt, model_tier, tools }) => {
                 const templateAgent = agents.find((a) => a.model_tier === model_tier) || agents[0];
                 const providerConfig = templateAgent?.provider_config || {};
-                createAgentRoomAgent(roomId, name, role, model_tier, system_prompt, tools, providerConfig);
+                const routerConfig = templateAgent?.router_config || {};
+                createAgentRoomAgent(roomId, name, role, model_tier, system_prompt, tools, providerConfig, routerConfig);
                 this.emitRoomEvent(roomId, 'agent_room:agent_spawned', {
                   agent_name: name,
                   role,

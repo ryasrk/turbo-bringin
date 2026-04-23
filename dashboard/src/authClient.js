@@ -403,8 +403,8 @@ export async function updateAgentRoomTask(roomId, taskId, fields) {
   return apiPatch(`/api/agent-rooms/${roomId}/tasks/${encodeURIComponent(taskId)}`, fields);
 }
 
-export async function addAgentToRoom(roomId, { name, role, model_tier, system_prompt = '', tools = [], provider_config = {} }) {
-  return apiPost(`/api/agent-rooms/${roomId}/agents`, { name, role, model_tier, system_prompt, tools, provider_config }, true);
+export async function addAgentToRoom(roomId, { name, role, model_tier, system_prompt = '', tools = [], provider_config = {}, router_config = {} }) {
+  return apiPost(`/api/agent-rooms/${roomId}/agents`, { name, role, model_tier, system_prompt, tools, provider_config, router_config }, true);
 }
 
 export async function getProviderPresets() {

@@ -121,6 +121,7 @@ CREATE TABLE IF NOT EXISTS agent_room_agents (
     system_prompt TEXT DEFAULT '',
     tools_json    TEXT DEFAULT '[]',
     provider_config_json TEXT DEFAULT '{}',
+    router_config_json TEXT DEFAULT '{}',
     status        TEXT DEFAULT 'idle' CHECK(status IN ('idle', 'running', 'error')),
     created_at    INTEGER DEFAULT (unixepoch()),
     updated_at    INTEGER DEFAULT (unixepoch()),
