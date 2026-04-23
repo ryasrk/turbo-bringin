@@ -168,7 +168,8 @@ function allowsReactiveFollowUp(triggerMessage) {
 
 // ── Quality Gate ──────────────────────────────────────────────
 // Detect whether a reviewer message approves or requests rework.
-const MAX_REWORK_CYCLES = 2;
+// First rework is auto-approved; subsequent ones ask the user.
+const AUTO_REWORK_LIMIT = 1;
 
 function detectReviewVerdict(message) {
   if (message.sender_type !== 'agent') return null;
@@ -268,6 +269,49 @@ export class LangChainAgentRoomOrchestrator extends EventEmitter {
   constructor() {
     super();
     this.roomQueues = new Map();
+    /** @type {Map<string, {resolve: Function, reject: Function}>} roomId → pending decision */
+    this.pendingReworkDecisions = new Map();
+  }
+
+  /**
+   * Called by the API route when the user responds to a rework decision prompt.
+   * @param {string} roomId
+   * @param {'continue'|'accept'|'stop'} decision
+   */
+  resolveReworkDecision(roomId, decision) {
+    const pending = this.pendingReworkDecisions.get(roomId);
+    if (pending) {
+      this.pendingReworkDecisions.delete(roomId);
+      pending.resolve(decision);
+    }
+  }
+
+  /**
+   * Wait for user to decide on a rework request. Emits a WebSocket event
+   * and returns a Promise that resolves when the user responds.
+   * Times out after 5 minutes with 'accept' (don't block forever).
+   */
+  async waitForReworkDecision(roomId, reviewerName, cycle, reviewContent) {
+    this.emitRoomEvent(roomId, 'agent_room:rework_decision_needed', {
+      reviewer: reviewerName,
+      cycle,
+      review_summary: String(reviewContent || '').slice(0, 500),
+      timestamp: nowUnix(),
+    });
+
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        this.pendingReworkDecisions.delete(roomId);
+        resolve('accept'); // Default: accept as-is after timeout
+      }, 5 * 60 * 1000);
+
+      this.pendingReworkDecisions.set(roomId, {
+        resolve: (decision) => {
+          clearTimeout(timeout);
+          resolve(decision);
+        },
+      });
+    });
   }
 
   enqueueRoomTask(roomId, task) {
@@ -413,28 +457,48 @@ export class LangChainAgentRoomOrchestrator extends EventEmitter {
               cycle: reworkCycles,
               timestamp: nowUnix(),
             });
-          } else if (verdict === 'rework' && reworkCycles < MAX_REWORK_CYCLES) {
+          } else if (verdict === 'rework') {
             reworkCycles += 1;
-            triggeredRework = true;
+
             this.emitRoomEvent(roomId, 'agent_room:quality_gate', {
               verdict: 'rework',
               reviewer: message.sender_name,
               cycle: reworkCycles,
               timestamp: nowUnix(),
             });
-            // Inject a rework handoff to coder if not already present
-            const hasCoderfHandoff = message.content.toLowerCase().includes('@coder');
-            if (!hasCoderfHandoff) {
-              const reworkMessage = {
-                sender_type: 'agent',
-                sender_name: message.sender_name,
-                content: `@coder Please address the review feedback above and fix the issues found. This is rework cycle ${reworkCycles}/${MAX_REWORK_CYCLES}.`,
-                event_type: 'handoff',
-                created_at: nowUnix(),
-              };
-              saveAgentRoomMessage(roomId, 'agent', message.sender_name, reworkMessage.content, 'handoff');
-              this.emitRoomEvent(roomId, 'agent_room:message', { message: reworkMessage });
-              triggerQueue.push(reworkMessage);
+
+            // Auto-approve first N rework cycles; ask user for subsequent ones
+            let shouldRework = reworkCycles <= AUTO_REWORK_LIMIT;
+            if (!shouldRework) {
+              const decision = await this.waitForReworkDecision(
+                roomId, message.sender_name, reworkCycles, message.content,
+              );
+              if (decision === 'continue') {
+                shouldRework = true;
+              } else if (decision === 'stop') {
+                // User wants to stop entirely — clear the trigger queue
+                triggerQueue.length = 0;
+                break;
+              }
+              // 'accept' — skip rework, continue processing remaining messages
+            }
+
+            if (shouldRework) {
+              triggeredRework = true;
+              // Inject a rework handoff to coder if not already present
+              const hasCoderfHandoff = message.content.toLowerCase().includes('@coder');
+              if (!hasCoderfHandoff) {
+                const reworkMessage = {
+                  sender_type: 'agent',
+                  sender_name: message.sender_name,
+                  content: `@coder Please address the review feedback above and fix the issues found. This is rework cycle ${reworkCycles}.`,
+                  event_type: 'handoff',
+                  created_at: nowUnix(),
+                };
+                saveAgentRoomMessage(roomId, 'agent', message.sender_name, reworkMessage.content, 'handoff');
+                this.emitRoomEvent(roomId, 'agent_room:message', { message: reworkMessage });
+                triggerQueue.push(reworkMessage);
+              }
             }
           }
 

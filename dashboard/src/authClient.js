@@ -339,6 +339,10 @@ export async function sendAgentRoomMessage(roomId, content) {
   return apiPost(`/api/agent-rooms/${roomId}/message`, { content }, true);
 }
 
+export async function submitReworkDecision(roomId, decision) {
+  return apiPost(`/api/agent-rooms/${roomId}/rework-decision`, { decision }, true);
+}
+
 export async function getAgentRoomMessages(roomId, limit = 100) {
   return apiGet(`/api/agent-rooms/${roomId}/messages?limit=${encodeURIComponent(String(limit))}`);
 }

@@ -33,6 +33,7 @@ import {
   removeRoomSkill,
   saveAgentRoomLog,
   saveAgentRoomMemory,
+  saveAgentRoomMessage,
   upsertAgentRoomFileReview,
   updateAgentRoomConfig,
   updateAgentRoomAgent,
@@ -46,6 +47,7 @@ import { ensureWorkspace, listFiles, readFile, safePath, updateFile, writeFile }
 import { ensureWorkspacePythonEnv, runWorkspacePythonFile } from '../agentRoom/workspaceRuntime.js';
 import { fetchProviderModelsForUi, getProviderPresetsForUi } from '../agentRoom/modelRouter.js';
 import { agentRoomOrchestrator } from '../agentRoom/orchestrator.js';
+import { broadcastAgentRoomEvent } from '../agentRoom/wsBridge.js';
 import { sendJson, readBody } from './apiRouter.js';
 
 const VALID_PROVIDERS = new Set(['enowxai', 'local', 'openai', 'anthropic', 'custom', 'tier', '']);
@@ -1121,6 +1123,43 @@ export async function handleAgentRoomRoute(path, url, req, res) {
     const removed = removeRoomSkill(room.id, roomSkillDetailMatch[2]);
     if (!removed) { sendJson(res, 404, { error: 'Skill not assigned to this room' }); return true; }
     sendJson(res, 200, { ok: true });
+    return true;
+  }
+
+  // ── Rework Decision ──────────────────────────────────────────
+  // User responds to a rework decision prompt from the quality gate.
+  const reworkDecisionMatch = path.match(/^\/api\/agent-rooms\/([^/]+)\/rework-decision$/);
+  if (reworkDecisionMatch && req.method === 'POST') {
+    const room = getAccessibleRoomOrReject(reworkDecisionMatch[1], userId, res);
+    if (!room) return true;
+
+    try {
+      const body = await readBody(req);
+      const decision = String(body?.decision || '').trim().toLowerCase();
+      if (!['continue', 'accept', 'stop'].includes(decision)) {
+        sendJson(res, 400, { error: 'Decision must be "continue", "accept", or "stop".' });
+        return true;
+      }
+
+      agentRoomOrchestrator.resolveReworkDecision(room.id, decision);
+
+      // Post a system message so the decision is visible in chat
+      const labels = { continue: '🔄 User chose to continue rework', accept: '✅ User accepted current implementation', stop: '⏹️ User stopped the workflow' };
+      saveAgentRoomMessage(room.id, 'user', req.user.username, labels[decision], 'system');
+      broadcastAgentRoomEvent(room.id, 'agent_room:message', {
+        message: {
+          sender_type: 'user',
+          sender_name: req.user.username,
+          content: labels[decision],
+          event_type: 'system',
+          created_at: Math.floor(Date.now() / 1000),
+        },
+      });
+
+      sendJson(res, 200, { ok: true, decision });
+    } catch (error) {
+      sendJson(res, 400, { error: error.message || 'Failed to process rework decision' });
+    }
     return true;
   }
 

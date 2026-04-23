@@ -1,4 +1,4 @@
-import { getAccessToken, isAuthenticated } from './authClient.js';
+import { getAccessToken, isAuthenticated, submitReworkDecision } from './authClient.js';
 import { rs, sanitizeClassToken } from './roomsUtils.js';
 import { showToast } from './utils.js';
 import { renderAgentMembers } from './roomsUI.js';
@@ -172,6 +172,18 @@ export function connectAgentRoomSocket() {
       return;
     }
 
+    if (payload.type === 'agent_room:rework_decision_needed') {
+      appendAgentRoomMessage({
+        sender_type: 'system',
+        sender_name: 'quality-gate',
+        content: `⚠️ @${payload.reviewer} requested rework (cycle ${payload.cycle}). What would you like to do?`,
+        event_type: 'system',
+        created_at: payload.timestamp || Math.floor(Date.now() / 1000),
+      });
+      showReworkDecisionUI(payload);
+      return;
+    }
+
     if (payload.type === 'agent_room:agent_spawned') {
       appendAgentRoomMessage({
         sender_type: 'system',
@@ -212,4 +224,50 @@ export function connectAgentRoomSocket() {
     rs.agentRoomConnectionState = 'offline';
     renderConnectionState();
   });
+}
+
+/**
+ * Show an inline decision UI in the chat when the orchestrator asks the user
+ * whether to continue rework, accept as-is, or stop.
+ */
+function showReworkDecisionUI(payload) {
+  const chatContainer = rs.panel?.querySelector('#agent-room-chat');
+  if (!chatContainer) return;
+
+  const roomId = rs.currentAgentRoomId;
+  if (!roomId) return;
+
+  const wrapper = document.createElement('div');
+  wrapper.className = 'rework-decision-bar';
+  wrapper.innerHTML = `
+    <p class="rework-decision-label">
+      @${payload.reviewer || 'reviewer'} requested changes (cycle ${payload.cycle}).
+      <br><em>${(payload.review_summary || '').slice(0, 200)}</em>
+    </p>
+    <div class="rework-decision-actions">
+      <button class="rework-btn rework-btn-continue" data-decision="continue">🔄 Continue Rework</button>
+      <button class="rework-btn rework-btn-accept" data-decision="accept">✅ Accept As-Is</button>
+      <button class="rework-btn rework-btn-stop" data-decision="stop">⏹️ Stop</button>
+    </div>
+  `;
+
+  for (const btn of wrapper.querySelectorAll('.rework-btn')) {
+    btn.addEventListener('click', async () => {
+      const decision = btn.dataset.decision;
+      wrapper.querySelectorAll('.rework-btn').forEach((b) => { b.disabled = true; });
+      btn.classList.add('rework-btn-selected');
+
+      try {
+        await submitReworkDecision(roomId, decision);
+      } catch (err) {
+        showToast('Failed to submit decision', 'error');
+      }
+
+      // Fade out the decision bar after a short delay
+      setTimeout(() => { wrapper.classList.add('rework-decision-done'); }, 800);
+    });
+  }
+
+  chatContainer.appendChild(wrapper);
+  chatContainer.scrollTop = chatContainer.scrollHeight;
 }
