@@ -106,10 +106,28 @@ agentRoomWss.on('connection', (ws, req, client) => {
     },
   });
 
+  // Mark alive on pong
+  ws._isAlive = true;
+  ws.on('pong', () => { ws._isAlive = true; });
+
   const cleanup = () => removeSocket(roomId, ws);
   ws.on('close', cleanup);
   ws.on('error', cleanup);
 });
+
+// Ping/pong heartbeat — detect dead connections every 30s
+const WS_HEARTBEAT_INTERVAL = 30_000;
+const _heartbeatTimer = setInterval(() => {
+  for (const ws of agentRoomWss.clients) {
+    if (ws._isAlive === false) {
+      ws.terminate();
+      continue;
+    }
+    ws._isAlive = false;
+    ws.ping();
+  }
+}, WS_HEARTBEAT_INTERVAL);
+_heartbeatTimer.unref(); // Don't prevent process exit
 
 export function handleAgentRoomUpgrade(req, socket, head) {
   const url = new URL(req.url, 'http://localhost');

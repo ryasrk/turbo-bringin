@@ -66,17 +66,34 @@ async function apiPost(path, body, auth = false) {
   return data;
 }
 
+/** In-flight GET request deduplication map */
+const _inflightGets = new Map();
+
 async function apiGet(path) {
-  const tokens = getStoredTokens();
-  const headers = {};
-  if (tokens?.access_token) {
-    headers['Authorization'] = `Bearer ${tokens.access_token}`;
+  // Deduplicate concurrent GET requests to the same path
+  if (_inflightGets.has(path)) {
+    return _inflightGets.get(path);
   }
 
-  const res = await fetch(path, { headers });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
-  return data;
+  const promise = (async () => {
+    const tokens = getStoredTokens();
+    const headers = {};
+    if (tokens?.access_token) {
+      headers['Authorization'] = `Bearer ${tokens.access_token}`;
+    }
+
+    const res = await fetch(path, { headers });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+    return data;
+  })();
+
+  _inflightGets.set(path, promise);
+  try {
+    return await promise;
+  } finally {
+    _inflightGets.delete(path);
+  }
 }
 
 async function apiGetBlob(path) {
@@ -307,10 +324,29 @@ export async function deleteRoom(roomId) {
   return apiDelete(`/api/rooms/${roomId}`);
 }
 
-export async function getRoomMessages(roomId, limit = 50, before = null) {
+export async function getRoomMessages(roomId, limit = 50, before = null, ifNoneMatch = null) {
   const params = new URLSearchParams({ limit: String(limit) });
   if (before) params.set('before', String(before));
-  return apiGet(`/api/rooms/${roomId}/messages?${params}`);
+  const path = `/api/rooms/${roomId}/messages?${params}`;
+
+  // Support conditional requests with ETag
+  if (ifNoneMatch) {
+    const tokens = getStoredTokens();
+    const headers = {};
+    if (tokens?.access_token) headers['Authorization'] = `Bearer ${tokens.access_token}`;
+    headers['If-None-Match'] = ifNoneMatch;
+
+    const res = await fetch(path, { headers });
+    if (res.status === 304) return null; // Not Modified
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+    // Attach ETag to response for caller to cache
+    const etag = res.headers.get('etag');
+    if (etag) data._etag = etag;
+    return data;
+  }
+
+  return apiGet(path);
 }
 
 export async function sendRoomMessage(roomId, content, messageType = 'text') {

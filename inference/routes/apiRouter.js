@@ -5,6 +5,7 @@
  */
 
 import { authenticateRequest } from '../auth/auth.js';
+import { sendCompressedJson } from '../compression.js';
 import { handleAgentRoomRoute } from './agentRoomRoutes.js';
 import { handleAuthRoute } from './authRoutes.js';
 import { handleConversationRoute } from './conversationRoutes.js';
@@ -12,9 +13,21 @@ import { handleRoomRoute } from './roomRoutes.js';
 
 // ── Helpers ────────────────────────────────────────────────────
 
-export function sendJson(res, statusCode, data) {
-  res.writeHead(statusCode, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify(data));
+/**
+ * Send a JSON response with optional gzip compression.
+ * When `req` is attached to `res._req`, compression is applied automatically.
+ */
+export function sendJson(res, statusCode, data, extraHeaders = {}) {
+  const req = res._req;
+  if (req) {
+    // Fire-and-forget async compression — response is sent inside
+    sendCompressedJson(req, res, statusCode, data, extraHeaders);
+    return;
+  }
+  // Fallback: no req available, send uncompressed
+  const json = JSON.stringify(data);
+  res.writeHead(statusCode, { 'Content-Type': 'application/json', ...extraHeaders });
+  res.end(json);
 }
 
 export function readBody(req, maxSize = 256 * 1024) {
@@ -46,6 +59,8 @@ export function readBody(req, maxSize = 256 * 1024) {
  * @returns {Promise<boolean>}
  */
 export async function routeApiRequest(url, req, res) {
+  // Attach req to res so sendJson can access Accept-Encoding for compression
+  res._req = req;
   const path = url.pathname;
 
   // ── Public auth routes (no token needed) ─────────────────────

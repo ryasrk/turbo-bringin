@@ -901,7 +901,10 @@ const controlServer = createServer(async (req, res) => {
   // GET /health
   if (url.pathname === '/health' && req.method === 'GET') {
     const healthy = await checkInferenceHealth();
-    res.writeHead(healthy ? 200 : 503, { 'Content-Type': 'application/json' });
+    res.writeHead(healthy ? 200 : 503, {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-store, max-age=0',
+    });
     return res.end(JSON.stringify({
       healthy,
       mode: currentMode,

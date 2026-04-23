@@ -1,11 +1,17 @@
 import { getRoomMessages, sendRoomMessage, sendAgentRoomMessage, getCurrentUser } from './authClient.js';
 import { rs, escapeHtml, getFileIcon } from './roomsUtils.js';
 
+/** ETag cache for room message polling — avoids re-rendering unchanged data */
+const _roomMessageEtags = new Map();
+
 export async function loadRoomMessages(roomId) {
   if (roomId !== rs.currentRoomId || rs.currentRoomMode !== 'team') return;
   try {
-    const data = await getRoomMessages(roomId);
-    renderRoomMessages(data.messages || [], 'team');
+    const etag = _roomMessageEtags.get(roomId) || null;
+    const result = await getRoomMessages(roomId, 50, null, etag);
+    if (result === null) return; // 304 Not Modified — skip re-render
+    if (result._etag) _roomMessageEtags.set(roomId, result._etag);
+    renderRoomMessages(result.messages || [], 'team');
   } catch { /* silent */ }
 }
 

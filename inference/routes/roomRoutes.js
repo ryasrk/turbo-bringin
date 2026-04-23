@@ -3,6 +3,7 @@
  * Project room CRUD, membership, and messaging.
  */
 
+import { createHash } from 'crypto';
 import { promises as fs } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
@@ -14,6 +15,12 @@ import {
 import { ensureProjectAgentRoom } from '../agentRoom/projectRoomLink.js';
 import { listAgentRoomAgents, listAgentRoomLogs, listAgentRoomMessages, listAgentRoomTasks } from '../db/database.js';
 import { sendJson, readBody } from './apiRouter.js';
+
+/** Generate a weak ETag from message count + last message timestamp */
+function messagesEtag(messages) {
+  const last = messages.length > 0 ? messages[messages.length - 1].created_at || messages[messages.length - 1].id : '0';
+  return `W/"msgs-${messages.length}-${last}"`;
+}
 import { randomBytes } from 'crypto';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -233,7 +240,17 @@ export async function handleRoomRoute(path, url, req, res) {
     const limit = parseInt(url.searchParams.get('limit') || '50', 10);
     const before = url.searchParams.get('before') || null;
     const messages = getRoomMessages(roomId, Math.min(limit, 100), before ? parseInt(before, 10) : null);
-    sendJson(res, 200, { messages });
+
+    // ETag-based conditional response — avoid re-sending unchanged data
+    const etag = messagesEtag(messages);
+    const ifNoneMatch = req.headers['if-none-match'];
+    if (ifNoneMatch && ifNoneMatch === etag) {
+      res.writeHead(304, { 'ETag': etag });
+      res.end();
+      return true;
+    }
+
+    sendJson(res, 200, { messages }, { 'ETag': etag, 'Cache-Control': 'private, no-cache' });
     return true;
   }
 

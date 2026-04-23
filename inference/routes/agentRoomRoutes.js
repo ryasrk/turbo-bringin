@@ -404,13 +404,13 @@ export async function handleAgentRoomRoute(path, url, req, res) {
 
   // Provider presets for the dashboard UI
   if (path === '/api/agent-rooms/provider-presets' && req.method === 'GET') {
-    sendJson(res, 200, { presets: await getProviderPresetsForUi() });
+    sendJson(res, 200, { presets: await getProviderPresetsForUi() }, { 'Cache-Control': 'public, max-age=300' });
     return true;
   }
 
   if (path === '/api/agent-rooms/provider-models' && req.method === 'GET') {
     const provider = String(url.searchParams.get('provider') || '').trim().toLowerCase();
-    sendJson(res, 200, { provider, models: await fetchProviderModelsForUi(provider) });
+    sendJson(res, 200, { provider, models: await fetchProviderModelsForUi(provider) }, { 'Cache-Control': 'public, max-age=120' });
     return true;
   }
 
@@ -1063,7 +1063,7 @@ export async function handleAgentRoomRoute(path, url, req, res) {
   // ── Skills: global catalog ─────────────────────────────────────
   if (path === '/api/skills' && req.method === 'GET') {
     const skills = await listAvailableSkills();
-    sendJson(res, 200, { skills });
+    sendJson(res, 200, { skills }, { 'Cache-Control': 'public, max-age=600' });
     return true;
   }
 
