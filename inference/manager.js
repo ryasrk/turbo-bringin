@@ -7,13 +7,15 @@
 import './loadEnv.js';
 
 import { spawn, execFile } from 'child_process';
-import { createServer, request as httpRequest } from 'http';
+import { Agent as HttpAgent, createServer, request as httpRequest } from 'http';
+import { Agent as HttpsAgent } from 'https';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { createClient } from 'redis';
 import { WebSocketServer } from 'ws';
 
 import { buildCacheKey, CACHE_TTLS, RequestCache, shouldCacheRequest } from './requestCache.js';
+import { sendCompressedJson } from './compression.js';
 import { handleAgentRoomUpgrade } from './agentRoom/wsBridge.js';
 import { buildChatCompletionPayload, parseSseLine, splitSseLines } from './streamProxy.js';
 import { routeApiRequest } from './routes/apiRouter.js';
@@ -42,6 +44,16 @@ const MAX_PROXY_BODY_SIZE = 512 * 1024;
 const MAX_BUFFERED_PROXY_RESPONSE_SIZE = 2 * 1024 * 1024;
 const SUPPORTED_PROXY_GET_PATHS = new Set(['/v1/models']);
 const SUPPORTED_PROXY_POST_PATHS = new Set(['/v1/chat/completions', '/v1/responses', '/v1/messages']);
+
+// ── JSON response helper (compressed for large payloads) ──────
+function sendJson(req, res, statusCode, data, extraHeaders = {}) {
+  return sendCompressedJson(req, res, statusCode, data, extraHeaders);
+}
+
+// ── Keep-Alive Agents (reuse TCP connections to upstream) ──────
+const localAgent = new HttpAgent({ keepAlive: true, maxSockets: 8, keepAliveMsecs: 30_000 });
+const remoteHttpAgent = new HttpAgent({ keepAlive: true, maxSockets: 6, keepAliveMsecs: 30_000 });
+const remoteHttpsAgent = new HttpsAgent({ keepAlive: true, maxSockets: 6, keepAliveMsecs: 30_000 });
 
 // ── Request Queue ──────────────────────────────────────────────
 const requestQueue = [];
@@ -252,6 +264,7 @@ function requestInference(pathname, { method = 'GET', body = null } = {}) {
       path: upstreamPath,
       method,
       headers,
+      agent: baseUrl.protocol === 'https:' ? remoteHttpsAgent : remoteHttpAgent,
     });
   }
 
@@ -264,6 +277,7 @@ function requestInference(pathname, { method = 'GET', body = null } = {}) {
       'Content-Type': 'application/json',
       'Content-Length': Buffer.byteLength(body),
     } : undefined,
+    agent: localAgent,
   });
 }
 
@@ -625,6 +639,10 @@ websocketServer.on('connection', (ws) => {
   activeWebSocketConnections += 1;
   wsConnectionsByIp.set(clientIp, (wsConnectionsByIp.get(clientIp) || 0) + 1);
 
+  // ── Heartbeat: detect dead connections ──
+  ws.isAlive = true;
+  ws.on('pong', () => { ws.isAlive = true; });
+
   let lastRequestAt = 0;
   let activeEntry = null;
 
@@ -701,6 +719,20 @@ websocketServer.on('connection', (ws) => {
   ws.on('close', closeConnection);
   ws.on('error', closeConnection);
 });
+
+// ── WebSocket heartbeat: ping every 30s, terminate unresponsive ──
+const WS_HEARTBEAT_INTERVAL = 30_000;
+const wsHeartbeat = setInterval(() => {
+  websocketServer.clients.forEach((ws) => {
+    if (!ws.isAlive) {
+      ws.terminate();
+      return;
+    }
+    ws.isAlive = false;
+    ws.ping();
+  });
+}, WS_HEARTBEAT_INTERVAL);
+wsHeartbeat.unref();
 
 function killServer() {
   return new Promise((resolve) => {
@@ -914,30 +946,25 @@ const controlServer = createServer(async (req, res) => {
   // GET /status
   if (url.pathname === '/status' && req.method === 'GET') {
     const healthy = await checkInferenceHealth();
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    return res.end(JSON.stringify({
+    return sendJson(req, res, 200, {
       mode: currentMode,
       label: currentMode ? MODES[currentMode].label : null,
       port: INFERENCE_PORT,
       pid: serverProcess?.pid || null,
       isStarting,
       healthy,
-    }));
+    });
   }
 
   // GET /health
   if (url.pathname === '/health' && req.method === 'GET') {
     const healthy = await checkInferenceHealth();
-    res.writeHead(healthy ? 200 : 503, {
-      'Content-Type': 'application/json',
-      'Cache-Control': 'no-store, max-age=0',
-    });
-    return res.end(JSON.stringify({
+    return sendJson(req, res, healthy ? 200 : 503, {
       healthy,
       mode: currentMode,
       isStarting,
       port: INFERENCE_PORT,
-    }));
+    }, { 'Cache-Control': 'no-store, max-age=0' });
   }
 
   // POST /switch?mode=turboquant
@@ -966,8 +993,7 @@ const controlServer = createServer(async (req, res) => {
   // GET /metrics
   if (url.pathname === '/metrics' && req.method === 'GET') {
     const contextSize = currentMode ? (MODES[currentMode].args[MODES[currentMode].args.indexOf('-c') + 1] || '0') : '0';
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    return res.end(JSON.stringify({
+    return sendJson(req, res, 200, {
       gpu: gpuMetricsCache,
       inference: {
         active_connections: activeWebSocketConnections,
@@ -983,7 +1009,7 @@ const controlServer = createServer(async (req, res) => {
         mode: currentMode || 'offline',
         context_size: parseInt(contextSize, 10),
       },
-    }));
+    });
   }
 
   // POST /stop

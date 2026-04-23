@@ -1,4 +1,5 @@
 import { defineConfig, loadEnv } from 'vite'
+import { compression } from 'vite-plugin-compression2'
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
@@ -35,6 +36,12 @@ export default defineConfig(({ mode }) => {
         },
       },
     },
+    plugins: [
+      // Pre-compress static assets at build time (Brotli level 11 — max compression)
+      compression({ algorithm: 'brotliCompress', exclude: [/\.(png|jpg|jpeg|gif|webp|avif)$/i] }),
+      // Also generate gzip for clients that don't support Brotli
+      compression({ algorithm: 'gzip', exclude: [/\.(png|jpg|jpeg|gif|webp|avif)$/i] }),
+    ],
     build: {
       // Enable CSS minification (esbuild is default, already good)
       cssMinify: true,
@@ -44,8 +51,12 @@ export default defineConfig(({ mode }) => {
       rollupOptions: {
         output: {
           manualChunks: {
-            // Agent Room feature — loaded only when entering agent rooms
-            'agent-room': [
+            // Rooms + Agent Room feature (merged — tightly coupled via cross-imports)
+            'rooms': [
+              './src/roomsUI.js',
+              './src/roomsList.js',
+              './src/roomChat.js',
+              './src/roomsUtils.js',
               './src/agentSocket.js',
               './src/agentWorkspace.js',
               './src/agentWorkspaceData.js',
@@ -56,13 +67,6 @@ export default defineConfig(({ mode }) => {
               './src/agentOrchestrationConfig.js',
               './src/agentTypingIndicator.js',
               './src/agentMemoryPanel.js',
-            ],
-            // Room system — loaded when navigating to rooms
-            'rooms': [
-              './src/roomsUI.js',
-              './src/roomsList.js',
-              './src/roomChat.js',
-              './src/roomsUtils.js',
             ],
             // Auth + API client — core but separable
             'auth': [

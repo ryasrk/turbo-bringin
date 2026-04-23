@@ -1,30 +1,58 @@
 /**
  * HTTP Response Compression Utility
- * Provides gzip compression for JSON API responses.
+ * Supports Brotli (preferred, ~14-21% smaller than gzip) with gzip fallback.
  * Only compresses responses above a size threshold.
  */
 
-import { gzip } from 'zlib';
+import { brotliCompress, gzip, constants } from 'zlib';
 import { promisify } from 'util';
 
+const brotliAsync = promisify(brotliCompress);
 const gzipAsync = promisify(gzip);
+
+/** Brotli quality level 4 — faster than gzip with smaller output */
+const BROTLI_OPTIONS = {
+  params: {
+    [constants.BROTLI_PARAM_QUALITY]: 4,
+  },
+};
 
 /** Minimum response size (bytes) to bother compressing */
 const MIN_COMPRESS_SIZE = 1024;
 
 /**
- * Check if the client accepts gzip encoding.
+ * Determine the best compression encoding the client accepts.
+ * Prefers Brotli over gzip.
  * @param {import('http').IncomingMessage} req
- * @returns {boolean}
+ * @returns {'br' | 'gzip' | null}
  */
+export function bestEncoding(req) {
+  const accept = req?.headers?.['accept-encoding'] || '';
+  if (accept.includes('br')) return 'br';
+  if (accept.includes('gzip')) return 'gzip';
+  return null;
+}
+
+/** @deprecated Use bestEncoding() instead */
 export function acceptsGzip(req) {
   const accept = req?.headers?.['accept-encoding'] || '';
   return accept.includes('gzip');
 }
 
 /**
- * Send a JSON response with optional gzip compression.
- * Falls back to uncompressed if the client doesn't accept gzip
+ * Compress a buffer using the specified encoding.
+ * @param {Buffer} buf
+ * @param {'br' | 'gzip'} encoding
+ * @returns {Promise<Buffer>}
+ */
+async function compress(buf, encoding) {
+  if (encoding === 'br') return brotliAsync(buf, BROTLI_OPTIONS);
+  return gzipAsync(buf);
+}
+
+/**
+ * Send a JSON response with Brotli/gzip compression.
+ * Falls back to uncompressed if the client doesn't accept either
  * or the payload is too small to benefit from compression.
  *
  * @param {import('http').IncomingMessage} req
@@ -40,10 +68,12 @@ export async function sendCompressedJson(req, res, statusCode, data, extraHeader
     ...extraHeaders,
   };
 
-  if (json.length >= MIN_COMPRESS_SIZE && acceptsGzip(req)) {
+  const encoding = bestEncoding(req);
+
+  if (json.length >= MIN_COMPRESS_SIZE && encoding) {
     try {
-      const compressed = await gzipAsync(Buffer.from(json, 'utf-8'));
-      headers['Content-Encoding'] = 'gzip';
+      const compressed = await compress(Buffer.from(json, 'utf-8'), encoding);
+      headers['Content-Encoding'] = encoding;
       headers['Content-Length'] = String(compressed.length);
       headers['Vary'] = 'Accept-Encoding';
       res.writeHead(statusCode, headers);

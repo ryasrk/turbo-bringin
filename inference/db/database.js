@@ -8,6 +8,7 @@ import { readFileSync, mkdirSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { randomUUID } from 'crypto';
+import { LRUCache } from './lruCache.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(__dirname, '..', '..');
@@ -23,9 +24,17 @@ if (!existsSync(DATA_DIR)) {
 // ── Initialize Database ────────────────────────────────────────
 const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
-db.pragma('synchronous = NORMAL'); // Safe with WAL, 2-3x faster writes
+db.pragma('synchronous = NORMAL');   // Safe with WAL, 2-3× faster writes
 db.pragma('foreign_keys = ON');
 db.pragma('busy_timeout = 5000');
+db.pragma('cache_size = -64000');    // 64 MB page cache (default ~2 MB)
+db.pragma('mmap_size = 268435456');  // 256 MB memory-mapped I/O
+db.pragma('temp_store = MEMORY');    // Temp tables in RAM instead of disk
+
+// ── LRU Caches (hot-path reads) ───────────────────────────────
+const userCache = new LRUCache(500, 120_000);       // Users: 2 min TTL
+const conversationCache = new LRUCache(200, 60_000); // Conversations: 1 min TTL
+const roomCache = new LRUCache(100, 60_000);         // Rooms: 1 min TTL
 
 const agentRoomColumns = db.prepare(`PRAGMA table_info(agent_rooms)`).all();
 if (agentRoomColumns.length > 0 && !agentRoomColumns.some((column) => column.name === 'project_room_id')) {
@@ -449,21 +458,36 @@ export function createUser(id, username, email, passwordHash, displayName) {
   return stmts.createUser.run(id, username, email, passwordHash, displayName || username);
 }
 export function findUserByUsername(username) {
-  return stmts.findUserByUsername.get(username) || null;
+  const cached = userCache.get(`uname:${username}`);
+  if (cached !== undefined) return cached;
+  const row = stmts.findUserByUsername.get(username) || null;
+  if (row) userCache.set(`uname:${username}`, row);
+  return row;
 }
 export function findUserByEmail(email) {
   return stmts.findUserByEmail.get(email) || null;
 }
 export function findUserById(id) {
-  return stmts.findUserById.get(id) || null;
+  const cached = userCache.get(`uid:${id}`);
+  if (cached !== undefined) return cached;
+  const row = stmts.findUserById.get(id) || null;
+  if (row) userCache.set(`uid:${id}`, row);
+  return row;
 }
 export function findUserPublic(id) {
-  return stmts.findUserPublic.get(id) || null;
+  const cached = userCache.get(`upub:${id}`);
+  if (cached !== undefined) return cached;
+  const row = stmts.findUserPublic.get(id) || null;
+  if (row) userCache.set(`upub:${id}`, row);
+  return row;
 }
 export function updateUser(id, fields) {
   if (fields.display_name !== undefined) stmts.updateDisplayName.run(fields.display_name, id);
   if (fields.avatar_url !== undefined) stmts.updateAvatar.run(fields.avatar_url, id);
   if (fields.password_hash !== undefined) stmts.updatePassword.run(fields.password_hash, id);
+  // Invalidate all cached variants for this user
+  userCache.invalidatePrefix(`uid:${id}`);
+  userCache.invalidatePrefix(`upub:${id}`);
 }
 
 // Refresh tokens
@@ -486,17 +510,24 @@ export function cleanupExpiredTokens() {
 // Conversations
 export function saveConversation(id, userId, title, messages, folderId) {
   const msgJson = typeof messages === 'string' ? messages : JSON.stringify(messages);
+  conversationCache.invalidate(`conv:${id}`);
   return stmts.saveConversation.run(id, userId, title, msgJson, folderId || null);
 }
 export function getConversation(id) {
+  const cached = conversationCache.get(`conv:${id}`);
+  if (cached !== undefined) return cached;
   const row = stmts.getConversation.get(id);
-  if (row) row.messages = JSON.parse(row.messages || '[]');
+  if (row) {
+    row.messages = JSON.parse(row.messages || '[]');
+    conversationCache.set(`conv:${id}`, row);
+  }
   return row || null;
 }
 export function getUserConversations(userId) {
   return stmts.getUserConversations.all(userId);
 }
 export function deleteConversation(id, userId) {
+  conversationCache.invalidate(`conv:${id}`);
   return stmts.deleteConversation.run(id, userId);
 }
 
@@ -527,7 +558,11 @@ export function cleanupExpiredShares() {
 export { createRoomWithOwner, joinRoomByInvite, leaveRoom };
 
 export function getProjectRoom(id) {
-  return stmts.getProjectRoom.get(id) || null;
+  const cached = roomCache.get(`room:${id}`);
+  if (cached !== undefined) return cached;
+  const row = stmts.getProjectRoom.get(id) || null;
+  if (row) roomCache.set(`room:${id}`, row);
+  return row;
 }
 export function getUserRooms(userId) {
   return stmts.getUserRooms.all(userId);
@@ -539,7 +574,12 @@ export function getRoomMembers(roomId) {
   return stmts.getRoomMembers.all(roomId);
 }
 export function isRoomMember(roomId, userId) {
-  return !!stmts.isRoomMember.get(roomId, userId);
+  const cacheKey = `member:${roomId}:${userId}`;
+  const cached = roomCache.get(cacheKey);
+  if (cached !== undefined) return cached;
+  const result = !!stmts.isRoomMember.get(roomId, userId);
+  roomCache.set(cacheKey, result);
+  return result;
 }
 export function getRoomMemberRole(roomId, userId) {
   const row = stmts.getRoomMemberRole.get(roomId, userId);
@@ -857,5 +897,14 @@ export function runCleanup() {
 // Run cleanup every 30 minutes
 const cleanupTimer = setInterval(runCleanup, 30 * 60 * 1000);
 cleanupTimer.unref();
+
+// Cache diagnostics
+export function getCacheStats() {
+  return {
+    user: userCache.stats(),
+    conversation: conversationCache.stats(),
+    room: roomCache.stats(),
+  };
+}
 
 export default db;
