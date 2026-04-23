@@ -418,6 +418,7 @@ export async function runReactiveAgentTurn({
     allowedSkillIds: roomContext.allowedSkillIds || null,
   });
   const allTools = [...filteredWorkspaceTools, ...collaborationTools, ...skillTools, ...mcpTools];
+  console.log(`[${agent.name}] Tools bound: ${allTools.map(t => t.name).join(', ')} (${allTools.length} total, ${skillTools.length} skill tools)`);
   const toolCallingMode = getToolCallingMode(agent);
   const baseModel = createAgentModel(agent);
   const nativeModel = baseModel.bindTools(allTools);
@@ -461,6 +462,12 @@ export async function runReactiveAgentTurn({
     nativeToolCallingEnabled
       ? `[system] Available tools:\n${toolDescriptions}\n\nUse native tool calling when it is available. If the provider does not support native tools, you may fall back to a JSON block like:\n\`\`\`json\n{"tool": "tool_name", ...params}\n\`\`\`\nAfter using tools, provide a clear final message.`
       : `[system] Available tools:\n${toolDescriptions}\n\nThis provider is running in text tool mode. To use a tool, include a JSON block like:\n\`\`\`json\n{"tool": "tool_name", ...params}\n\`\`\`\nAfter using tools, provide a clear final message.`,
+  ));
+
+  // Skill search reminder — placed last so it's the most recent instruction
+  messages.push(new HumanMessage(
+    '[system] REMINDER: Your FIRST action must be to call search_skills with keywords related to this task. ' +
+    'Do not skip this step. Skills contain expert patterns and templates that improve your output quality.',
   ));
 
   // Run the agent with tool execution loop
