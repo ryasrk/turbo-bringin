@@ -136,6 +136,103 @@ export async function readSkillDataFile(skillId, fileName) {
 }
 
 /**
+ * Read any file within a skill directory (SKILL.md, references/*, scripts/*, etc.).
+ * Supports relative paths within the skill folder.
+ *
+ * @param {string} skillId - Skill directory name
+ * @param {string} relativePath - Relative path within the skill directory (e.g., "SKILL.md", "references/aws.md")
+ * @returns {Promise<string|null>} File content or null
+ */
+export async function readSkillFile(skillId, relativePath) {
+  // Prevent path traversal
+  const normalized = String(relativePath || '').replace(/\\/g, '/');
+  if (normalized.includes('..') || normalized.startsWith('/')) return null;
+
+  const filePath = join(SKILLS_ROOT, skillId, normalized);
+  // Ensure resolved path stays within the skill directory
+  const resolved = join(SKILLS_ROOT, skillId, normalized);
+  if (!resolved.startsWith(join(SKILLS_ROOT, skillId))) return null;
+
+  try {
+    return await readFile(resolved, 'utf8');
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * List files within a skill directory (for browsing skill resources).
+ *
+ * @param {string} skillId - Skill directory name
+ * @param {string} [subPath='.'] - Relative path within the skill directory
+ * @returns {Promise<Array<{name: string, type: string}>>} List of entries
+ */
+export async function listSkillFiles(skillId, subPath = '.') {
+  const normalized = String(subPath || '.').replace(/\\/g, '/');
+  if (normalized.includes('..')) return [];
+
+  const dirPath = join(SKILLS_ROOT, skillId, normalized);
+  if (!dirPath.startsWith(join(SKILLS_ROOT, skillId))) return [];
+
+  try {
+    const entries = await readdir(dirPath, { withFileTypes: true });
+    return entries.map((e) => ({
+      name: e.name,
+      type: e.isDirectory() ? 'directory' : 'file',
+    }));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Search skills by keyword matching against name and description.
+ *
+ * @param {string} query - Search query (keywords)
+ * @returns {Promise<Array<{id: string, name: string, description: string, relevance: number}>>}
+ */
+export async function searchSkills(query) {
+  const skills = await loadAllSkills();
+  const queryLower = String(query || '').toLowerCase().trim();
+  if (!queryLower) {
+    return Array.from(skills.entries()).map(([id, skill]) => ({
+      id,
+      name: skill.name,
+      description: skill.description,
+      relevance: 1,
+    }));
+  }
+
+  const queryWords = queryLower.split(/\s+/).filter(Boolean);
+  const results = [];
+
+  for (const [id, skill] of skills) {
+    const nameStr = (skill.name || '').toLowerCase();
+    const descStr = (skill.description || '').toLowerCase();
+    const contentStr = (skill.content || '').toLowerCase();
+
+    let score = 0;
+    for (const word of queryWords) {
+      if (nameStr.includes(word)) score += 3;
+      if (descStr.includes(word)) score += 2;
+      if (contentStr.includes(word)) score += 1;
+    }
+
+    if (score > 0) {
+      results.push({
+        id,
+        name: skill.name,
+        description: skill.description.slice(0, 200),
+        relevance: score / (queryWords.length * 6), // normalize to 0-1
+      });
+    }
+  }
+
+  results.sort((a, b) => b.relevance - a.relevance);
+  return results;
+}
+
+/**
  * Build a skill context block for injection into an agent's system prompt.
  * Takes an array of skill IDs and returns a formatted markdown section.
  *

@@ -15,7 +15,6 @@ import {
   updateAgentRoomAgentStatus,
 } from '../../db/database.js';
 import { listFiles } from '../fileTools.js';
-import { buildSkillPromptBlock } from '../skillLoader.js';
 import { broadcastAgentRoomEvent } from '../wsBridge.js';
 import { runReactiveAgentTurn, shouldAgentRespond } from './reactiveAgent.js';
 
@@ -352,10 +351,9 @@ export class LangChainAgentRoomOrchestrator extends EventEmitter {
       const privateMemory = getAgentRoomMemory(roomId, agent.name)?.memory_text || '';
       const agents = listAgentRoomAgents(roomId, { includeSecrets: true });
 
-      // Load room skills and build prompt block
+      // Load room-assigned skills (used as filter for skill tools)
       const roomSkills = listRoomSkills(roomId);
-      const skillIds = roomSkills.map((s) => s.skill_id);
-      const skillPromptBlock = await buildSkillPromptBlock(skillIds).catch(() => '');
+      const allowedSkillIds = roomSkills.map((s) => s.skill_id);
 
       saveAgentRoomLog(roomId, agent.name, 'info', 'Started work on a room task', {
         source: 'room_message',
@@ -382,7 +380,7 @@ export class LangChainAgentRoomOrchestrator extends EventEmitter {
           workspaceListing,
           privateMemory,
           agents,
-          skillPromptBlock,
+          allowedSkillIds: allowedSkillIds.length > 0 ? allowedSkillIds : null,
         },
         input,
         conversationHistory: messages,

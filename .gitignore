@@ -32,11 +32,12 @@ data/tenrary.db-shm
 data/tenrary.db-wal
 data/agent-workspaces/
 
-# Skill binary/large data (SKILL.md files are tracked)
+# Skill large binary assets (SKILL.md, scripts/, references/ are tracked)
 data/skills/*/canvas-fonts/
 data/skills/*/data/
-data/skills/*/scripts/
-data/skills/*/references/
+data/skills/**/theme-showcase.pdf
+data/skills/**/schemas/
+data/skills/**/evals/
 
 # OS
 .DS_Store

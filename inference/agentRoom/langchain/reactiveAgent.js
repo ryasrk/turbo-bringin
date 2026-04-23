@@ -15,6 +15,7 @@ import { HumanMessage, SystemMessage, AIMessage, ToolMessage } from '@langchain/
 import { createAgentModel } from './chatModelAdapter.js';
 import { createWorkspaceTools, createCollaborationTools } from './workspaceTools.js';
 import { createMcpTools } from './mcpTools.js';
+import { createSkillTools } from './skillTools.js';
 
 const MAX_TOOL_ITERATIONS = 8;
 const RELEVANCE_THRESHOLD = 0.3;
@@ -28,6 +29,9 @@ const KNOWN_TOOL_NAMES = new Set([
   'respond_to_proposal',
   'think_aloud',
   'delegate',
+  'search_skills',
+  'read_skill',
+  'list_skill_files',
 ]);
 
 export function getRoleOperatingGuidance(agent) {
@@ -145,7 +149,12 @@ If you want to hand off to another agent, use @agent_name in your message.
 Never hand work off to yourself.
 
 ${roomContext.privateMemory ? `## Your Private Memory\n${roomContext.privateMemory}` : ''}
-${roomContext.skillPromptBlock || ''}`;
+
+## Skills Library
+You have access to a skills library with expert knowledge for specialized tasks (UI design, document processing, API patterns, code review, etc.).
+Use **search_skills** to find relevant skills, then **read_skill** to load detailed instructions.
+Use **list_skill_files** to browse a skill's bundled resources (scripts, references, templates).
+Always search for relevant skills before starting complex or specialized work.`;
 }
 
 /**
@@ -397,7 +406,10 @@ export async function runReactiveAgentTurn({
   const allowedToolNames = new Set(agent.tools || ['list_files', 'read_file', 'write_file', 'update_file']);
   const filteredWorkspaceTools = workspaceTools.filter((t) => allowedToolNames.has(t.name));
   const mcpTools = await createMcpTools(agent.provider_config);
-  const allTools = [...filteredWorkspaceTools, ...collaborationTools, ...mcpTools];
+  const skillTools = createSkillTools({
+    allowedSkillIds: roomContext.allowedSkillIds || null,
+  });
+  const allTools = [...filteredWorkspaceTools, ...collaborationTools, ...skillTools, ...mcpTools];
   const toolCallingMode = getToolCallingMode(agent);
   const baseModel = createAgentModel(agent);
   const nativeModel = baseModel.bindTools(allTools);
