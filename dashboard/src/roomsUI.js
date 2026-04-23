@@ -951,20 +951,20 @@ export async function openRoomChat(roomId) {
   resetAgentRoomSidebar();
   clearSnapshots();
   clearSkills();
-  const roomsPage = rs.panel.querySelector('.rooms-page');
-  const roomChat = rs.panel.querySelector('#room-chat');
-  const roomNote = rs.panel.querySelector('#room-chat-note');
-  const roomBots = rs.panel.querySelector('#room-chat-bots');
-  const messagesEl = rs.panel.querySelector('#room-messages');
-  const workspaceView = rs.panel.querySelector('#room-workspace');
-  const roomAiPage = rs.panel.querySelector('#room-ai-page');
-  const roomKind = rs.panel.querySelector('#room-chat-kind');
-  const threadCaption = rs.panel.querySelector('#room-thread-caption');
-  const composerHint = rs.panel.querySelector('#room-composer-hint');
-  const roomAiBtn = rs.panel.querySelector('#room-ai-btn');
+  const roomsPage = rs.panel?.querySelector('.rooms-page');
+  const roomChat = rs.panel?.querySelector('#room-chat');
+  const roomNote = rs.panel?.querySelector('#room-chat-note');
+  const roomBots = rs.panel?.querySelector('#room-chat-bots') || rs.panel?.querySelector('#room-ai-bots');
+  const messagesEl = rs.panel?.querySelector('#room-messages');
+  const workspaceView = rs.panel?.querySelector('#room-workspace');
+  const roomAiPage = rs.panel?.querySelector('#room-ai-page');
+  const roomKind = rs.panel?.querySelector('#room-chat-kind');
+  const threadCaption = rs.panel?.querySelector('#room-thread-caption');
+  const composerHint = rs.panel?.querySelector('#room-composer-hint');
+  const roomAiBtn = rs.panel?.querySelector('#room-ai-btn');
 
-  roomsPage.hidden = true;
-  roomChat.hidden = false;
+  if (roomsPage) roomsPage.hidden = true;
+  if (roomChat) roomChat.hidden = false;
   if (workspaceView) workspaceView.hidden = true;
   if (roomAiPage) roomAiPage.hidden = true;
   if (roomAiBtn) roomAiBtn.hidden = true;
@@ -972,23 +972,24 @@ export async function openRoomChat(roomId) {
 
   try {
     const data = await getRoom(roomId);
-    rs.panel.querySelector('#room-chat-name').textContent = data.room.name;
-    rs.panel.querySelector('#room-chat-members').textContent = `${data.members?.length || 0} members`;
-    rs.panel.querySelector('#room-input').placeholder = 'Type a message...';
+    const nameEl = rs.panel?.querySelector('#room-chat-name');
+    const membersEl = rs.panel?.querySelector('#room-chat-members');
+    const inputEl = rs.panel?.querySelector('#room-input');
+    if (nameEl) nameEl.textContent = data.room.name;
+    if (membersEl) membersEl.textContent = `${data.members?.length || 0} members`;
+    if (inputEl) inputEl.placeholder = 'Type a message...';
     if (roomKind) roomKind.textContent = 'Team Room';
     if (threadCaption) threadCaption.textContent = 'Collaborate with people in the room.';
     if (composerHint) composerHint.textContent = 'Share updates, decisions, or questions with the team.';
     rs.currentAgentMembers = [];
-    roomNote.hidden = true;
-    roomNote.textContent = '';
-    roomBots.hidden = true;
-    roomBots.innerHTML = '';
+    if (roomNote) { roomNote.hidden = true; roomNote.textContent = ''; }
+    if (roomBots) { roomBots.hidden = true; roomBots.innerHTML = ''; }
 
     showAgentSidebar(false);
 
     const user = getCurrentUser();
-    const deleteBtn = rs.panel.querySelector('#room-delete-btn');
-    deleteBtn.hidden = !(user && data.room.owner_id === user.id);
+    const deleteBtn = rs.panel?.querySelector('#room-delete-btn');
+    if (deleteBtn) deleteBtn.hidden = !(user && data.room.owner_id === user.id);
 
     await loadRoomMessages(roomId);
 
@@ -1005,20 +1006,20 @@ export async function openAgentRoomChat(projectRoomId) {
   closeAgentSocket();
   resetAgentRoomSidebar();
 
-  const roomsPage = rs.panel.querySelector('.rooms-page');
-  const roomChat = rs.panel.querySelector('#room-chat');
-  const roomNote = rs.panel.querySelector('#room-chat-note');
-  const roomBots = rs.panel.querySelector('#room-chat-bots');
-  const messagesEl = rs.panel.querySelector('#room-messages');
-  const workspaceView = rs.panel.querySelector('#room-workspace');
-  const roomAiPage = rs.panel.querySelector('#room-ai-page');
-  const roomKind = rs.panel.querySelector('#room-chat-kind');
-  const threadCaption = rs.panel.querySelector('#room-thread-caption');
-  const composerHint = rs.panel.querySelector('#room-composer-hint');
-  const roomAiBtn = rs.panel.querySelector('#room-ai-btn');
+  const roomsPage = rs.panel?.querySelector('.rooms-page');
+  const roomChat = rs.panel?.querySelector('#room-chat');
+  const roomNote = rs.panel?.querySelector('#room-chat-note');
+  const roomBots = rs.panel?.querySelector('#room-ai-bots');
+  const messagesEl = rs.panel?.querySelector('#room-messages');
+  const workspaceView = rs.panel?.querySelector('#room-workspace');
+  const roomAiPage = rs.panel?.querySelector('#room-ai-page');
+  const roomKind = rs.panel?.querySelector('#room-chat-kind');
+  const threadCaption = rs.panel?.querySelector('#room-thread-caption');
+  const composerHint = rs.panel?.querySelector('#room-composer-hint');
+  const roomAiBtn = rs.panel?.querySelector('#room-ai-btn');
 
-  roomsPage.hidden = true;
-  roomChat.hidden = false;
+  if (roomsPage) roomsPage.hidden = true;
+  if (roomChat) roomChat.hidden = false;
   if (workspaceView) workspaceView.hidden = true;
   if (roomAiPage) roomAiPage.hidden = true;
   if (roomAiBtn) roomAiBtn.hidden = false;
@@ -1028,16 +1029,19 @@ export async function openAgentRoomChat(projectRoomId) {
     const data = await getProjectAgentRoomDetails(projectRoomId);
     rs.currentAgentRoomId = data.room?.id || null;
 
-    rs.panel.querySelector('#room-chat-name').textContent = data.room?.name || 'AI Agent Room';
-    rs.panel.querySelector('#room-chat-members').textContent = `${data.agents?.length || 0} bot members`;
-    rs.panel.querySelector('#room-input').placeholder = 'Message the room. Example: @planner make a build plan';
+    const nameEl = rs.panel?.querySelector('#room-chat-name');
+    const membersEl = rs.panel?.querySelector('#room-chat-members');
+    const inputEl = rs.panel?.querySelector('#room-input');
+    if (nameEl) nameEl.textContent = data.room?.name || 'AI Agent Room';
+    if (membersEl) membersEl.textContent = `${data.agents?.length || 0} bot members`;
+    if (inputEl) inputEl.placeholder = 'Message the room. Example: @planner make a build plan';
     if (roomKind) roomKind.textContent = 'AI Agent Room';
     if (threadCaption) threadCaption.textContent = 'Delegate work, monitor handoffs, and inspect generated artifacts.';
     if (composerHint) composerHint.textContent = 'Best practice: assign a clear goal, scope, and expected output to one agent at a time.';
 
     const shouldShowNewRoomTip = isNewAgentRoom(data.messages || []);
-    roomNote.hidden = !shouldShowNewRoomTip;
-    if (shouldShowNewRoomTip) {
+    if (roomNote) roomNote.hidden = !shouldShowNewRoomTip;
+    if (roomNote && shouldShowNewRoomTip) {
       const agentNames = (data.agents || []).map((a) => `
         <button type="button" class="room-note-chip" data-agent-mention="${escapeHtml(a.name)}">@${escapeHtml(a.name)}</button>
       `);
@@ -1055,14 +1059,14 @@ export async function openAgentRoomChat(projectRoomId) {
           <div class="room-note-title">Add bot members to start delegating work.</div>
           <div class="room-note-body">Create specialized agents for planning, implementation, review, or documentation.</div>
         `;
-    } else {
+    } else if (roomNote) {
       roomNote.innerHTML = '';
     }
     renderAgentMembers(data.agents || []);
 
     const user = getCurrentUser();
-    const deleteBtn = rs.panel.querySelector('#room-delete-btn');
-    deleteBtn.hidden = !(user && data.room?.owner_id === user.id);
+    const deleteBtn = rs.panel?.querySelector('#room-delete-btn');
+    if (deleteBtn) deleteBtn.hidden = !(user && data.room?.owner_id === user.id);
 
     rs.agentRoomLogs = data.logs || [];
     rs.agentRoomOrchestrationMode = data.room?.orchestration_mode || 'reactive';
@@ -1164,22 +1168,20 @@ export function closeRoomChat() {
   closeAgentSocket();
   resetAgentRoomSidebar();
   showAgentSidebar(false);
-  const roomsPage = rs.panel.querySelector('.rooms-page');
-  const roomChat = rs.panel.querySelector('#room-chat');
-  const roomNote = rs.panel.querySelector('#room-chat-note');
-  const roomBots = rs.panel.querySelector('#room-ai-bots');
-  const workspaceView = rs.panel.querySelector('#room-workspace');
-  const roomAiPage = rs.panel.querySelector('#room-ai-page');
-  const roomAiBtn = rs.panel.querySelector('#room-ai-btn');
-  roomsPage.hidden = false;
-  roomChat.hidden = true;
+  const roomsPage = rs.panel?.querySelector('.rooms-page');
+  const roomChat = rs.panel?.querySelector('#room-chat');
+  const roomNote = rs.panel?.querySelector('#room-chat-note');
+  const roomBots = rs.panel?.querySelector('#room-ai-bots');
+  const workspaceView = rs.panel?.querySelector('#room-workspace');
+  const roomAiPage = rs.panel?.querySelector('#room-ai-page');
+  const roomAiBtn = rs.panel?.querySelector('#room-ai-btn');
+  if (roomsPage) roomsPage.hidden = false;
+  if (roomChat) roomChat.hidden = true;
   if (workspaceView) workspaceView.hidden = true;
   if (roomAiPage) roomAiPage.hidden = true;
   if (roomAiBtn) roomAiBtn.hidden = true;
-  roomNote.hidden = true;
-  roomNote.textContent = '';
-  roomBots.hidden = true;
-  roomBots.innerHTML = '';
+  if (roomNote) { roomNote.hidden = true; roomNote.textContent = ''; }
+  if (roomBots) { roomBots.hidden = true; roomBots.innerHTML = ''; }
   hideMentionMenu();
   applyActiveRoomCard();
 }
