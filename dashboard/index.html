@@ -3,6 +3,18 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy" content="
+    default-src 'self';
+    script-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net;
+    style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net;
+    font-src 'self' https://cdn.jsdelivr.net;
+    img-src 'self' data: blob:;
+    connect-src 'self' ws: wss:;
+    worker-src 'self';
+    object-src 'none';
+    base-uri 'self';
+    form-action 'self';
+  " />
   <title>Tenrary-X Chat</title>
   <!-- Preconnect to CDN domains — speeds up resource loading by ~100-200ms -->
   <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin />
@@ -150,6 +162,7 @@
             <span class="stream-state-indicator" hidden></span>
             <span id="token-info" class="token-info"></span>
             <button id="analytics-btn" class="footer-btn" title="Token Analytics">Analytics</button>
+            <button id="copy-all-btn" class="footer-btn" title="Copy entire conversation">📋 Copy All</button>
             <button id="export-btn" class="footer-btn" title="Export chat (Ctrl+E)">Export</button>
           </div>
         </footer>

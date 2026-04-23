@@ -7,7 +7,35 @@
  *   - hljs       (highlight.js)
  *   - katex      (KaTeX)
  *   - mermaid    (Mermaid)
+ *
+ * Security: Two-layer XSS protection:
+ *   1. escapeHtml() runs FIRST on raw input
+ *   2. DOMPurify sanitizes final HTML output (defense-in-depth)
  */
+
+import DOMPurify from 'dompurify';
+
+// Configure DOMPurify — allow safe HTML elements used by our renderer
+const PURIFY_CONFIG = {
+  ALLOWED_TAGS: [
+    'p', 'br', 'strong', 'em', 'del', 'code', 'pre', 'span', 'div',
+    'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+    'ul', 'ol', 'li', 'blockquote', 'hr', 'a',
+    'table', 'thead', 'tbody', 'tr', 'th', 'td',
+    'details', 'summary',
+    'sup', 'sub', 'mark',
+    // KaTeX elements
+    'math', 'semantics', 'mrow', 'mi', 'mo', 'mn', 'msup', 'msub',
+    'mfrac', 'mover', 'munder', 'msqrt', 'mtext', 'annotation',
+  ],
+  ALLOWED_ATTR: [
+    'class', 'id', 'href', 'target', 'rel', 'title', 'aria-label',
+    'data-lang', 'data-mermaid', 'open', 'colspan', 'rowspan',
+    'style', // KaTeX uses inline styles
+  ],
+  ALLOW_DATA_ATTR: false,
+  ADD_ATTR: ['target'],
+};
 
 // ── HTML entity escaping (XSS layer — runs FIRST) ─────────────
 
@@ -523,7 +551,10 @@ export function renderMarkdown(text) {
     html = thinkingHtml + html;
   }
 
-  // 10. Schedule mermaid rendering (next tick so DOM is updated)
+  // 10. DOMPurify sanitization (defense-in-depth — catches anything escapeHtml missed)
+  html = DOMPurify.sanitize(html, PURIFY_CONFIG);
+
+  // 11. Schedule mermaid rendering (next tick so DOM is updated)
   queueMicrotask(triggerMermaidRender);
 
   return html;

@@ -149,12 +149,28 @@ function resolveParallelSlots(mode) {
   return 1;
 }
 
+let gpuPollingDisabled = false;
+let gpuErrorCount = 0;
+const GPU_MAX_ERRORS = 3; // Stop polling after 3 consecutive failures
+
 function pollGpuMetrics() {
+  if (gpuPollingDisabled) return;
+
   execFile('nvidia-smi', [
     '--query-gpu=utilization.gpu,memory.used,memory.total,temperature.gpu',
     '--format=csv,noheader,nounits',
   ], { timeout: 5000 }, (err, stdout) => {
-    if (err) return;
+    if (err) {
+      gpuErrorCount++;
+      if (gpuErrorCount >= GPU_MAX_ERRORS) {
+        gpuPollingDisabled = true;
+        // Log once, then stop wasting resources
+        const ts = new Date().toLocaleTimeString();
+        console.log(`[${ts}] GPU metrics disabled — nvidia-smi not available (${gpuErrorCount} failures)`);
+      }
+      return;
+    }
+    gpuErrorCount = 0; // Reset on success
     const parts = stdout.trim().split(',').map((s) => parseFloat(s.trim()));
     if (parts.length >= 4 && parts.every((n) => !Number.isNaN(n))) {
       gpuMetricsCache = {
@@ -168,7 +184,8 @@ function pollGpuMetrics() {
 }
 
 pollGpuMetrics();
-setInterval(pollGpuMetrics, 5000);
+const gpuPollInterval = setInterval(pollGpuMetrics, 5000);
+gpuPollInterval.unref(); // Don't prevent process exit
 
 const websocketServer = new WebSocketServer({ noServer: true, maxPayload: 256 * 1024 });
 

@@ -1,5 +1,6 @@
 import { getRoomMessages, sendRoomMessage, sendAgentRoomMessage, getCurrentUser } from './authClient.js';
 import { rs, escapeHtml, getFileIcon } from './roomsUtils.js';
+import { renderMarkdown } from './markdownRenderer.js';
 
 /** ETag cache for room message polling — avoids re-rendering unchanged data */
 const _roomMessageEtags = new Map();
@@ -44,6 +45,10 @@ export function renderRoomMessages(messages, mode) {
         : '';
 
       const eventType = normalizeAgentEventType(message.event_type);
+      // Agent messages use markdown rendering; user messages use plain text escape
+      const contentHtml = message.sender_type === 'agent'
+        ? renderMarkdown(message.content)
+        : escapeHtml(message.content);
 
       return `
         <div class="room-msg ${isMe ? 'room-msg-me' : 'room-msg-other'} room-msg-agent-${escapeHtml(message.sender_type || 'user')} room-msg-event-${escapeHtml(eventType.key)} ${message.event_type === 'handoff' ? 'room-msg-handoff' : ''}">
@@ -54,7 +59,7 @@ export function renderRoomMessages(messages, mode) {
             </div>
             <span class="room-msg-time">${escapeHtml(eventType.meta)}</span>
           </div>
-          <div class="room-msg-content">${escapeHtml(message.content)}</div>
+          <div class="room-msg-content">${contentHtml}</div>
           ${artifactsHtml}
         </div>
       `;
@@ -106,6 +111,9 @@ export function appendAgentRoomMessage(message) {
       : '';
 
     const eventType = normalizeAgentEventType(message.event_type);
+    const contentHtml = message.sender_type === 'agent'
+      ? renderMarkdown(message.content)
+      : escapeHtml(message.content);
 
     html = `
       <div class="room-msg ${isMe ? 'room-msg-me' : 'room-msg-other'} room-msg-agent-${escapeHtml(message.sender_type || 'user')} room-msg-event-${escapeHtml(eventType.key)} ${message.event_type === 'handoff' ? 'room-msg-handoff' : ''}">
@@ -116,7 +124,7 @@ export function appendAgentRoomMessage(message) {
           </div>
           <span class="room-msg-time">${escapeHtml(eventType.meta)}</span>
         </div>
-        <div class="room-msg-content">${escapeHtml(message.content)}</div>
+        <div class="room-msg-content">${contentHtml}</div>
         ${artifactsHtml}
       </div>
     `;

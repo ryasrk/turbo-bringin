@@ -32,6 +32,10 @@ function checkRateLimit(limiter, req, res) {
   return true;
 }
 
+// Body size limits — auth payloads are small (username+password+email ≈ 200 bytes)
+const AUTH_BODY_LIMIT = 4 * 1024;       // 4 KB for login/register/refresh/logout
+const PROFILE_BODY_LIMIT = 64 * 1024;   // 64 KB for profile (base64 avatar data URLs)
+
 /**
  * @param {string} path
  * @param {import('http').IncomingMessage} req
@@ -44,7 +48,7 @@ export async function handleAuthRoute(path, req, res) {
   if (path === '/api/auth/register' && req.method === 'POST') {
     if (!checkRateLimit(registerLimiter, req, res)) return true;
     try {
-      const body = await readBody(req);
+      const body = await readBody(req, AUTH_BODY_LIMIT);
       const { username, email, password, display_name } = body;
 
       if (!username || !email || !password) {
@@ -69,7 +73,7 @@ export async function handleAuthRoute(path, req, res) {
   if (path === '/api/auth/login' && req.method === 'POST') {
     if (!checkRateLimit(loginLimiter, req, res)) return true;
     try {
-      const body = await readBody(req);
+      const body = await readBody(req, AUTH_BODY_LIMIT);
       const { username, password } = body;
 
       if (!username || !password) {
@@ -94,7 +98,7 @@ export async function handleAuthRoute(path, req, res) {
   if (path === '/api/auth/refresh' && req.method === 'POST') {
     if (!checkRateLimit(refreshLimiter, req, res)) return true;
     try {
-      const body = await readBody(req);
+      const body = await readBody(req, AUTH_BODY_LIMIT);
       const { refresh_token } = body;
 
       if (!refresh_token) {
@@ -118,7 +122,7 @@ export async function handleAuthRoute(path, req, res) {
   // POST /api/auth/logout
   if (path === '/api/auth/logout' && req.method === 'POST') {
     try {
-      const body = await readBody(req);
+      const body = await readBody(req, AUTH_BODY_LIMIT);
       logout(body.refresh_token);
       sendJson(res, 200, { ok: true });
     } catch {
@@ -148,7 +152,7 @@ export async function handleAuthRoute(path, req, res) {
     }
 
     try {
-      const body = await readBody(req);
+      const body = await readBody(req, PROFILE_BODY_LIMIT);
       const updates = {};
       if (body.display_name !== undefined) updates.display_name = String(body.display_name).slice(0, 50);
       if (body.avatar_url !== undefined) {
@@ -182,7 +186,7 @@ export async function handleAuthRoute(path, req, res) {
     }
 
     try {
-      const body = await readBody(req);
+      const body = await readBody(req, AUTH_BODY_LIMIT);
       const { current_password, new_password } = body;
 
       if (!current_password || !new_password) {
