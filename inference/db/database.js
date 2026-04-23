@@ -63,6 +63,27 @@ if (agentColumns.length > 0 && !agentColumns.some((c) => c.name === 'router_conf
   db.exec("ALTER TABLE agent_room_agents ADD COLUMN router_config_json TEXT DEFAULT '{}'");
 }
 
+// Backfill: set all agents with empty router_config to use local xa model
+// This ensures existing rooms benefit from the xa/xb dual-model architecture
+{
+  const routerPort = parseInt(process.env.AGENT_ROUTER_PORT, 10) || 18080;
+  const routerModel = process.env.AGENT_ROUTER_MODEL || 'local';
+  const defaultRouterConfig = JSON.stringify({
+    provider: 'local',
+    base_url: `http://127.0.0.1:${routerPort}`,
+    model: routerModel,
+    max_tokens: 512,
+    temperature: 0.1,
+  });
+  const backfilled = db.run(
+    `UPDATE agent_room_agents SET router_config_json = ? WHERE router_config_json = '{}' OR router_config_json IS NULL OR router_config_json = ''`,
+    [defaultRouterConfig],
+  );
+  if (backfilled.changes > 0) {
+    console.log(`[db] Backfilled ${backfilled.changes} agent(s) with default xa router config (local:${routerPort})`);
+  }
+}
+
 // Migrate agent_room_messages: add artifacts column
 const msgColumns = db.query('PRAGMA table_info(agent_room_messages)').all();
 if (msgColumns.length > 0 && !msgColumns.some((c) => c.name === 'artifacts')) {
