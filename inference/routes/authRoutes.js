@@ -56,7 +56,7 @@ export async function handleAuthRoute(path, req, res) {
         return true;
       }
 
-      const result = register(username, email, password, display_name);
+      const result = await register(username, email, password, display_name);
       if (result.error) {
         sendJson(res, 400, { error: result.error });
         return true;
@@ -81,7 +81,7 @@ export async function handleAuthRoute(path, req, res) {
         return true;
       }
 
-      const result = login(username, password);
+      const result = await login(username, password);
       if (result.error) {
         sendJson(res, 401, { error: result.error });
         return true;
