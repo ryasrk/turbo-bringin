@@ -55,45 +55,112 @@ export class RequestCache {
   }
 
   async get(key) {
-    const namespacedKey = this.getCacheKey(key);
-
-    if (this.redisClient?.isReady) {
-      const cached = await this.redisClient.get(namespacedKey);
-      return cached ? JSON.parse(cached) : null;
-    }
-
-    const cached = this.memoryCache.get(namespacedKey);
-    if (!cached || cached.expiresAt <= Date.now()) {
-      this.memoryCache.delete(namespacedKey);
-      return null;
-    }
-
-    return cached.value;
+    const { value, state } = await this._getWithState(key);
+    // Return value if fresh or stale (backward compat — callers that use get() directly)
+    return (state === 'fresh' || state === 'stale') ? value : null;
   }
 
   async set(key, value, ttlSeconds) {
     const namespacedKey = this.getCacheKey(key);
+    const now = Date.now();
 
     if (this.redisClient?.isReady) {
-      await this.redisClient.set(namespacedKey, JSON.stringify(value), { EX: ttlSeconds });
+      // Store with SWR metadata: freshUntil + staleUntil
+      const wrapped = JSON.stringify({
+        value,
+        freshUntil: now + ttlSeconds * 1000,
+        staleUntil: now + ttlSeconds * 2 * 1000, // stale window = 2x TTL
+      });
+      // Total Redis TTL = stale window (2x)
+      await this.redisClient.set(namespacedKey, wrapped, { EX: ttlSeconds * 2 });
       return;
     }
 
     this.memoryCache.set(namespacedKey, {
       value,
-      expiresAt: Date.now() + ttlSeconds * 1000,
+      freshUntil: now + ttlSeconds * 1000,
+      staleUntil: now + ttlSeconds * 2 * 1000,
     });
+  }
+
+  /**
+   * Get a cached value with SWR awareness.
+   * Returns { value, state } where state is 'fresh' | 'stale' | null.
+   */
+  async _getWithState(key) {
+    const namespacedKey = this.getCacheKey(key);
+    const now = Date.now();
+
+    if (this.redisClient?.isReady) {
+      const raw = await this.redisClient.get(namespacedKey);
+      if (!raw) return { value: null, state: null };
+      try {
+        const parsed = JSON.parse(raw);
+        // New SWR format
+        if (parsed.freshUntil !== undefined) {
+          if (now < parsed.freshUntil) return { value: parsed.value, state: 'fresh' };
+          if (now < parsed.staleUntil) return { value: parsed.value, state: 'stale' };
+          return { value: null, state: null };
+        }
+        // Legacy format (no SWR metadata) — treat as fresh
+        return { value: parsed, state: 'fresh' };
+      } catch {
+        return { value: null, state: null };
+      }
+    }
+
+    const cached = this.memoryCache.get(namespacedKey);
+    if (!cached) return { value: null, state: null };
+
+    // New SWR format
+    if (cached.freshUntil !== undefined) {
+      if (now < cached.freshUntil) return { value: cached.value, state: 'fresh' };
+      if (now < cached.staleUntil) return { value: cached.value, state: 'stale' };
+      this.memoryCache.delete(namespacedKey);
+      return { value: null, state: null };
+    }
+
+    // Legacy format (expiresAt)
+    if (cached.expiresAt && cached.expiresAt <= now) {
+      this.memoryCache.delete(namespacedKey);
+      return { value: null, state: null };
+    }
+    return { value: cached.value, state: 'fresh' };
   }
 
   async getOrCompute(key, ttlSeconds, compute, options = {}) {
     const shouldCache = typeof options.shouldCache === 'function'
       ? options.shouldCache
       : () => true;
-    const cached = await this.get(key);
-    if (cached) {
+
+    const { value: cached, state } = await this._getWithState(key);
+
+    // Fresh cache hit — return immediately
+    if (state === 'fresh' && cached != null) {
       return { value: cached, source: 'cache' };
     }
 
+    // Stale cache hit — return stale data immediately, revalidate in background
+    if (state === 'stale' && cached != null) {
+      // Background revalidation (fire-and-forget, deduplicated via inflight)
+      if (!this.inflight.has(key)) {
+        const revalidate = (async () => {
+          try {
+            const freshValue = await compute();
+            if (shouldCache(freshValue)) {
+              await this.set(key, freshValue, ttlSeconds);
+            }
+          } catch {
+            // Revalidation failed — stale data continues to be served
+          }
+        })();
+        this.inflight.set(key, revalidate);
+        revalidate.finally(() => this.inflight.delete(key));
+      }
+      return { value: cached, source: 'stale-while-revalidate' };
+    }
+
+    // Cache miss — compute synchronously (with request coalescing)
     if (this.inflight.has(key)) {
       return { value: await this.inflight.get(key), source: 'coalesced' };
     }
