@@ -1,10 +1,10 @@
 /**
  * Tenrary-X Authentication Module
- * JWT access/refresh tokens, bcrypt password hashing, middleware.
+ * JWT access/refresh tokens, Bun.password native hashing, middleware.
+ * Uses Bun.password (native async bcrypt) instead of bcryptjs for non-blocking hashing.
  */
 
 import jwt from 'jsonwebtoken';
-import bcrypt from 'bcryptjs';
 import { createHash, randomUUID } from 'crypto';
 import {
   createUser, findUserByUsername, findUserByEmail, findUserById,
@@ -54,12 +54,12 @@ function sanitizeUser(user) {
 
 // ── Password ───────────────────────────────────────────────────
 
-export function hashPassword(password) {
-  return bcrypt.hashSync(password, BCRYPT_ROUNDS);
+export async function hashPassword(password) {
+  return Bun.password.hash(password, { algorithm: 'bcrypt', cost: BCRYPT_ROUNDS });
 }
 
-export function verifyPassword(password, hash) {
-  return bcrypt.compareSync(password, hash);
+export async function verifyPassword(password, hash) {
+  return Bun.password.verify(password, hash);
 }
 
 export function validatePassword(password) {
@@ -144,7 +144,7 @@ export function verifyRefreshTokenAndRotate(token) {
 
 // ── Registration ───────────────────────────────────────────────
 
-export function register(username, email, password, displayName) {
+export async function register(username, email, password, displayName) {
   // Validate
   if (!username || !USERNAME_RE.test(username)) {
     return { error: 'Username must be 3-30 characters (letters, numbers, underscores)' };
@@ -167,7 +167,7 @@ export function register(username, email, password, displayName) {
 
   // Create user
   const id = uuid();
-  const passwordHash = hashPassword(password);
+  const passwordHash = await hashPassword(password);
   createUser(id, username, email, passwordHash, displayName || username);
 
   const user = findUserById(id);
@@ -178,13 +178,13 @@ export function register(username, email, password, displayName) {
 
 // ── Login ──────────────────────────────────────────────────────
 
-export function login(usernameOrEmail, password) {
+export async function login(usernameOrEmail, password) {
   const user = usernameOrEmail.includes('@')
     ? findUserByEmail(usernameOrEmail)
     : findUserByUsername(usernameOrEmail);
 
   if (!user) return { error: 'Invalid credentials' };
-  if (!verifyPassword(password, user.password_hash)) return { error: 'Invalid credentials' };
+  if (!await verifyPassword(password, user.password_hash)) return { error: 'Invalid credentials' };
 
   const tokens = createTokenPair(user.id, user.username);
   return { user: sanitizeUser(user), tokens };

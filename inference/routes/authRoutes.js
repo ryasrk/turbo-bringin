@@ -195,7 +195,7 @@ export async function handleAuthRoute(path, req, res) {
       }
 
       const user = findUserById(req.user.id);
-      if (!verifyPassword(current_password, user.password_hash)) {
+      if (!await verifyPassword(current_password, user.password_hash)) {
         sendJson(res, 401, { error: 'Current password is incorrect' });
         return true;
       }
@@ -206,7 +206,7 @@ export async function handleAuthRoute(path, req, res) {
         return true;
       }
 
-      updateUser(req.user.id, { password_hash: hashPassword(new_password) });
+      updateUser(req.user.id, { password_hash: await hashPassword(new_password) });
       logoutAll(req.user.id);
       sendJson(res, 200, { ok: true, message: 'Password changed. All sessions revoked.' });
     } catch (err) {
