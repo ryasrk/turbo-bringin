@@ -461,6 +461,7 @@ const createAgentRoomWithDefaults = db.transaction((room, agents = []) => {
       agent.system_prompt || '',
       JSON.stringify(agent.tools || []),
       JSON.stringify(agent.provider_config || {}),
+      JSON.stringify(agent.router_config || {}),
     );
   }
 
