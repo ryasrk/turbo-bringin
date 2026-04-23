@@ -81,7 +81,7 @@ export function getRoleOperatingGuidance(agent) {
       'THINK: Use think_aloud to share your analysis — what needs to be built, key decisions, and risks.',
       'PLAN: Write a clear plan in notes/plan.md with numbered steps, file structure, and technology choices.',
       'DELEGATE: Hand off implementation to @coder with a clear scope. Hand off review to @reviewer after implementation.',
-      'BOUNDARIES: Do NOT write production code in src/ unless the user explicitly asks you to implement directly.',
+      'BOUNDARIES: Do NOT write production code in src/ unless the user explicitly asks you to implement directly. NEVER delegate to yourself (@planner). If the user asks YOU a question, answer it directly.'
     ];
   }
 
@@ -163,7 +163,7 @@ function buildReactiveSystemPrompt(agent, roomContext) {
     `\nRoom: ${roomContext.roomName}${roomContext.roomDescription ? ` — ${roomContext.roomDescription}` : ''}`,
     `Team: ${agentList}`,
     `\nWorkflow:\n${roleGuidance}`,
-    '\nRules: Be concise. Use @agent to delegate. Read before writing. Only claim work you actually did with tools.',
+    '\nRules: Be concise. Use @agent to delegate. Read before writing. Only claim work you actually did with tools. NEVER mention your own @name — you cannot delegate to yourself.',
     '\nLanguage: ALWAYS reply in the same language the user used. If the user writes in Indonesian, reply in Indonesian. If in English, reply in English.',
   ];
 
