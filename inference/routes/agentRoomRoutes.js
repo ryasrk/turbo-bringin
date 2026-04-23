@@ -458,69 +458,68 @@ export async function handleAgentRoomRoute(path, url, req, res) {
         agents: listAgentRoomAgents(roomId),
       });
     } catch (error) {
-        tasks: listAgentRoomTasks(room.id),
       sendJson(res, 400, { error: error.message || 'Failed to create agent room' });
     }
     return true;
+  }
 
-    const tasksMatch = path.match(/^\/api\/agent-rooms\/([^/]+)\/tasks$/);
-    if (tasksMatch && req.method === 'GET') {
-      const room = getAccessibleRoomOrReject(tasksMatch[1], userId, res);
-      if (!room) return true;
+  const tasksMatch = path.match(/^\/api\/agent-rooms\/([^/]+)\/tasks$/);
+  if (tasksMatch && req.method === 'GET') {
+    const room = getAccessibleRoomOrReject(tasksMatch[1], userId, res);
+    if (!room) return true;
 
-      sendJson(res, 200, { tasks: listAgentRoomTasks(room.id) });
+    sendJson(res, 200, { tasks: listAgentRoomTasks(room.id) });
+    return true;
+  }
+
+  if (tasksMatch && req.method === 'POST') {
+    const room = getAccessibleRoomOrReject(tasksMatch[1], userId, res);
+    if (!room) return true;
+    if (!requireRoomOwner(room, userId, res)) return true;
+
+    try {
+      const body = await readBody(req);
+      const task = createAgentRoomTask(room.id, {
+        ...sanitizeTaskPayload(body),
+        created_by: req.user.username || req.user.display_name || userId,
+      });
+      saveAgentRoomLog(room.id, 'system', 'info', `Created task ${task.title}`, {
+        task_id: task.id,
+        status: task.status,
+        priority: task.priority,
+      });
+      sendJson(res, 201, { task, tasks: listAgentRoomTasks(room.id) });
+    } catch (error) {
+      sendJson(res, 400, { error: error.message || 'Failed to create task' });
+    }
+    return true;
+  }
+
+  const singleTaskMatch = path.match(/^\/api\/agent-rooms\/([^/]+)\/tasks\/([^/]+)$/);
+  if (singleTaskMatch && req.method === 'PATCH') {
+    const room = getAccessibleRoomOrReject(singleTaskMatch[1], userId, res);
+    if (!room) return true;
+    if (!requireRoomOwner(room, userId, res)) return true;
+
+    const existing = getAgentRoomTask(room.id, singleTaskMatch[2]);
+    if (!existing) {
+      sendJson(res, 404, { error: 'Task not found' });
       return true;
     }
 
-    if (tasksMatch && req.method === 'POST') {
-      const room = getAccessibleRoomOrReject(tasksMatch[1], userId, res);
-      if (!room) return true;
-      if (!requireRoomOwner(room, userId, res)) return true;
-
-      try {
-        const body = await readBody(req);
-        const task = createAgentRoomTask(room.id, {
-          ...sanitizeTaskPayload(body),
-          created_by: req.user.username || req.user.display_name || userId,
-        });
-        saveAgentRoomLog(room.id, 'system', 'info', `Created task ${task.title}`, {
-          task_id: task.id,
-          status: task.status,
-          priority: task.priority,
-        });
-        sendJson(res, 201, { task, tasks: listAgentRoomTasks(room.id) });
-      } catch (error) {
-        sendJson(res, 400, { error: error.message || 'Failed to create task' });
-      }
-      return true;
+    try {
+      const body = await readBody(req);
+      const updated = updateAgentRoomTask(room.id, existing.id, sanitizeTaskPayload(body, existing));
+      saveAgentRoomLog(room.id, 'system', 'info', `Updated task ${updated.title}`, {
+        task_id: updated.id,
+        status: updated.status,
+        priority: updated.priority,
+      });
+      sendJson(res, 200, { task: updated, tasks: listAgentRoomTasks(room.id) });
+    } catch (error) {
+      sendJson(res, 400, { error: error.message || 'Failed to update task' });
     }
-
-    const singleTaskMatch = path.match(/^\/api\/agent-rooms\/([^/]+)\/tasks\/([^/]+)$/);
-    if (singleTaskMatch && req.method === 'PATCH') {
-      const room = getAccessibleRoomOrReject(singleTaskMatch[1], userId, res);
-      if (!room) return true;
-      if (!requireRoomOwner(room, userId, res)) return true;
-
-      const existing = getAgentRoomTask(room.id, singleTaskMatch[2]);
-      if (!existing) {
-        sendJson(res, 404, { error: 'Task not found' });
-        return true;
-      }
-
-      try {
-        const body = await readBody(req);
-        const updated = updateAgentRoomTask(room.id, existing.id, sanitizeTaskPayload(body, existing));
-        saveAgentRoomLog(room.id, 'system', 'info', `Updated task ${updated.title}`, {
-          task_id: updated.id,
-          status: updated.status,
-          priority: updated.priority,
-        });
-        sendJson(res, 200, { task: updated, tasks: listAgentRoomTasks(room.id) });
-      } catch (error) {
-        sendJson(res, 400, { error: error.message || 'Failed to update task' });
-      }
-      return true;
-    }
+    return true;
   }
 
   const roomMatch = path.match(/^\/api\/agent-rooms\/([^/]+)$/);

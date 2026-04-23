@@ -68,7 +68,7 @@ export async function routeApiRequest(url, req, res) {
     return handleRoomRoute(path, url, req, res);
   }
 
-  if (path.startsWith('/api/agent-rooms')) {
+  if (path.startsWith('/api/agent-rooms') || path.startsWith('/api/skills')) {
     return handleAgentRoomRoute(path, url, req, res);
   }
 
