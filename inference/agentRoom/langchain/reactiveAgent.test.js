@@ -169,9 +169,12 @@ test('getToolCallingMode defaults local and tier-local agents to text mode', () 
 });
 
 test('getRoleOperatingGuidance keeps planner, coder, and reviewer scoped to their role', () => {
-  assert.ok(getRoleOperatingGuidance({ name: 'planner' }).some((line) => line.includes('Delegate implementation to @coder')));
-  assert.ok(getRoleOperatingGuidance({ name: 'coder' }).some((line) => line.includes('Do not hand work off to yourself')));
-  assert.ok(getRoleOperatingGuidance({ name: 'reviewer' }).some((line) => line.includes('Do not create or overwrite production code in src/')));
+  assert.ok(getRoleOperatingGuidance({ name: 'planner' }).some((line) => line.includes('@coder')));
+  assert.ok(getRoleOperatingGuidance({ name: 'planner' }).some((line) => line.includes('DELEGATE')));
+  assert.ok(getRoleOperatingGuidance({ name: 'coder' }).some((line) => line.includes('BOUNDARIES')));
+  assert.ok(getRoleOperatingGuidance({ name: 'coder' }).some((line) => line.includes('RESEARCH')));
+  assert.ok(getRoleOperatingGuidance({ name: 'reviewer' }).some((line) => line.includes('BOUNDARIES')));
+  assert.ok(getRoleOperatingGuidance({ name: 'reviewer' }).some((line) => line.includes('INSPECT')));
 });
 
 test('getAllowedCollaborationToolNames narrows collaboration tools by role', () => {

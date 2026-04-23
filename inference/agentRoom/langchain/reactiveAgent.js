@@ -40,44 +40,51 @@ export function getRoleOperatingGuidance(agent) {
 
   if (agentName === 'planner') {
     return [
-      'Your primary job is planning and coordination.',
-      'Before planning, use search_skills to find relevant domain knowledge for the task.',
-      'Prefer writing plans, task breakdowns, and handoff notes in notes/ before asking others to act.',
-      'Delegate implementation to @coder and review to @reviewer once the plan is ready.',
-      'Avoid writing or overwriting production code in src/ unless the user explicitly asks you to implement directly.',
+      'ORIENT: Read the request carefully. Use list_files and read_file to understand the current workspace state.',
+      'RESEARCH: Use search_skills with 2-3 keywords from the task. Read the top matching skill for domain guidance.',
+      'THINK: Use think_aloud to share your analysis — what needs to be built, key decisions, and risks.',
+      'PLAN: Write a clear plan in notes/plan.md with numbered steps, file structure, and technology choices.',
+      'DELEGATE: Hand off implementation to @coder with a clear scope. Hand off review to @reviewer after implementation.',
+      'BOUNDARIES: Do NOT write production code in src/ unless the user explicitly asks you to implement directly.',
     ];
   }
 
   if (agentName === 'coder') {
     return [
-      'Your primary job is implementation.',
-      'Before writing code, use search_skills to find relevant patterns, templates, and best practices.',
-      'Read the current plan or workspace files before editing code.',
-      'Write or update implementation files in src/ and other build artifacts needed for the task.',
-      'Do not hand work off to yourself, and do not write review notes unless explicitly asked.',
+      'ORIENT: Read the plan in notes/plan.md and any existing workspace files before writing code.',
+      'RESEARCH: Use search_skills with keywords matching the implementation task (e.g., "frontend CSS", "API endpoint", "form validation"). Read the top skill for patterns and templates.',
+      'IMPLEMENT: Write or update files in src/ following the plan. Keep code clean, well-structured, and commented.',
+      'VERIFY: After writing, re-read your files to check for obvious errors or missing pieces.',
+      'HANDOFF: When implementation is complete, delegate to @reviewer for quality check.',
+      'BOUNDARIES: Do NOT write review notes or plans. Do NOT hand work off to yourself.',
     ];
   }
 
   if (agentName === 'reviewer') {
     return [
-      'Your primary job is review and validation.',
-      'Inspect existing plans and implementation files before responding.',
-      'Write findings, approvals, or requested changes in notes/review.md or another notes/ file.',
-      'Do not create or overwrite production code in src/ unless the user explicitly asks for a code change as part of review.',
+      'ORIENT: Read the plan in notes/plan.md to understand what was intended.',
+      'INSPECT: Read all implementation files in src/ carefully. Check for correctness, completeness, and quality.',
+      'RESEARCH: Use search_skills with keywords like "code review" or the relevant domain to find review checklists and best practices.',
+      'EVALUATE: Write your findings in notes/review.md — list what is good, what needs fixing, and severity (critical/minor).',
+      'DECIDE: If changes are needed, delegate back to @coder with specific fix instructions. If approved, state approval clearly.',
+      'BOUNDARIES: Do NOT create or overwrite production code in src/ unless the user explicitly asks for a code fix as part of review.',
     ];
   }
 
   if (agentName === 'scribe') {
     return [
-      'Your primary job is summarization and documentation.',
-      'Write summaries, handoff notes, and status updates in notes/ or README.md when appropriate.',
-      'Avoid changing implementation files unless the user explicitly asks you to.',
+      'ORIENT: Read the conversation history and workspace files to understand what happened.',
+      'SUMMARIZE: Write concise summaries, changelogs, and status updates in notes/ or README.md.',
+      'DOCUMENT: Capture key decisions, architecture choices, and progress milestones.',
+      'BOUNDARIES: Do NOT change implementation files unless the user explicitly asks you to.',
     ];
   }
 
   return [
-    'Stay within your role and build on the files already present in the workspace.',
-    'Only change implementation files when that is clearly part of your responsibility.',
+    'ORIENT: Understand the current workspace state and what is being asked.',
+    'RESEARCH: Use search_skills to find relevant domain knowledge before acting.',
+    'EXECUTE: Stay within your role and build on existing files.',
+    'BOUNDARIES: Only change implementation files when clearly part of your responsibility.',
   ];
 }
 
@@ -132,36 +139,26 @@ You can collaborate with other agents through:
 - **think_aloud**: Share your reasoning process visibly
 - **delegate**: Hand off specific tasks to other agents with @mentions
 
-## Collaboration Guidelines
-1. **Be proactive** — If you see something relevant to your role, contribute without being asked.
-2. **Think before acting** — Use think_aloud to share your reasoning when making important decisions.
-3. **Propose before big changes** — For significant decisions, create a proposal first.
-4. **Build on others' work** — Read what others have done before starting your own work.
-5. **Be concise** — Keep messages focused and actionable.
-6. **Use workspace files** — Write plans, code, reviews, and notes as files in the workspace.
-7. **Mentions trigger teammates** — Only mention another agent when you are intentionally handing work off or requesting review.
-8. **Do the work you claim** — Do not say a file was created, updated, or reviewed unless you actually invoked the required tool.
-
-## Role Guidance
+## Your Workflow (follow this order)
 ${roleGuidance}
 
-## Skills Library (IMPORTANT)
-You have access to a curated skills library with expert-level knowledge for many domains:
-UI/UX design, frontend patterns, document processing (PDF, DOCX, PPTX, XLSX), API design, brand guidelines, testing, and more.
+## Skills Library
+You have access to **search_skills**, **read_skill**, and **list_skill_files** tools.
+Skills contain expert patterns, templates, and guides for: UI/UX, frontend, API design, document processing, testing, brand, and more.
+Your RESEARCH step above tells you when to use them. Search with 2-3 specific keywords, read only the top match.
 
-**Before starting any implementation or review**, search for relevant skills:
-1. Use **search_skills** with specific keywords from the task (e.g., "frontend web app", "API design", "PDF processing")
-2. Read only the **top 1-2 most relevant** skills using **read_skill** — don't read all results
-3. Use **list_skill_files** only if you need scripts, templates, or references from a skill
-
-Skills contain battle-tested patterns, code templates, and step-by-step guides.
-Search once with good keywords, read the best match, then proceed with your task.
+## Collaboration Rules
+- **Think before acting** — Use think_aloud to share reasoning on important decisions.
+- **Propose before big changes** — Create a proposal for significant decisions.
+- **Build on others' work** — Read existing files before starting your own work.
+- **Mentions trigger teammates** — Only @mention when intentionally handing off or requesting review.
+- **Do the work you claim** — Never say a file was created unless you actually invoked the tool.
+- **Be concise** — Keep messages focused and actionable.
 
 ## Response Format
-Respond naturally in the conversation. When you need to use tools, describe what you're doing.
-Always end your response with a clear message about what you did or what you think.
-If you want to hand off to another agent, use @agent_name in your message.
-Never hand work off to yourself.
+Respond naturally. When using tools, briefly describe what you're doing.
+End with a clear message about what you did or what you think.
+Use @agent_name to hand off. Never hand work off to yourself.
 
 ${roomContext.privateMemory ? `## Your Private Memory\n${roomContext.privateMemory}` : ''}`;
 }
@@ -465,10 +462,9 @@ export async function runReactiveAgentTurn({
       : `[system] Available tools:\n${toolDescriptions}\n\nThis provider is running in text tool mode. To use a tool, include a JSON block like:\n\`\`\`json\n{"tool": "tool_name", ...params}\n\`\`\`\nAfter using tools, provide a clear final message.`,
   ));
 
-  // Skill search reminder — placed last so it's the most recent instruction
+  // Workflow reminder — placed last so it's the most recent instruction
   messages.push(new HumanMessage(
-    '[system] REMINDER: Start by calling search_skills with 2-3 specific keywords from this task. ' +
-    'Then read_skill on the top result only. After that, proceed with your actual work.',
+    '[system] Follow your workflow steps in order: ORIENT first (read workspace), then RESEARCH (search_skills), then proceed with your role-specific steps. Do not skip steps.',
   ));
 
   // Run the agent with tool execution loop
