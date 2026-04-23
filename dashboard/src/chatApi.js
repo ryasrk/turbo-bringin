@@ -586,12 +586,7 @@ export async function sendToAPI() {
     const statsHtml = activeModel
       ? `${tokenCount} tokens • ${elapsed.toFixed(2)}s • ${tps} t/s • ${state.mode} • ${activeModel}`
       : `${tokenCount} tokens • ${elapsed.toFixed(2)}s • ${tps} t/s • ${state.mode}`;
-    const footerEl = document.createElement('div');
-    footerEl.className = 'message-footer';
-    const statsEl = document.createElement('div');
-    statsEl.className = 'message-stats';
-    statsEl.textContent = statsHtml;
-    footerEl.appendChild(statsEl);
+    const msgBody = streamEl.querySelector('.message-body');
     const actionsEl = document.createElement('div');
     actionsEl.className = 'message-actions';
     const copyBtn = document.createElement('button');
@@ -611,8 +606,11 @@ export async function sendToAPI() {
       }
     });
     actionsEl.appendChild(copyBtn);
-    footerEl.appendChild(actionsEl);
-    streamEl.querySelector('.message-body').appendChild(footerEl);
+    msgBody.appendChild(actionsEl);
+    const statsEl = document.createElement('div');
+    statsEl.className = 'message-stats';
+    statsEl.textContent = statsHtml;
+    msgBody.appendChild(statsEl);
 
     const metaEl = streamEl.querySelector('.message-meta');
     if (metaEl && !metaEl.querySelector('.regen-btn')) {

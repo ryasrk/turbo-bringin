@@ -164,12 +164,10 @@ export function createMessageEl(role, content, stats = null, images = [], msgDat
         ${role === 'assistant' ? '<button class="reaction-btn" data-reaction="up" title="Good response">👍</button><button class="reaction-btn" data-reaction="down" title="Poor response">👎</button>' : ''}
       </div>
       <div class="message-content">${renderedContent}</div>
-      <div class="message-footer">
-        ${stats ? `<div class="message-stats">${stats}</div>` : ''}
-        <div class="message-actions">
-          <button class="copy-msg-btn" title="Copy message">📋 Copy</button>
-        </div>
+      <div class="message-actions">
+        <button class="copy-msg-btn" title="Copy message">📋 Copy</button>
       </div>
+      ${stats ? `<div class="message-stats">${stats}</div>` : ''}
     </div>
   `;
 

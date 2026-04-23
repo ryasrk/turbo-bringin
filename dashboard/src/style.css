@@ -779,12 +779,17 @@ summary:focus-visible {
 
 .message-content li { margin: 4px 0; }
 
-.message-footer {
+.message-actions {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-top: 6px;
+  gap: 4px;
+  justify-content: flex-end;
+  margin-top: 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.message:hover .message-actions {
+  opacity: 1;
 }
 
 .message-stats {
@@ -792,17 +797,7 @@ summary:focus-visible {
   gap: 12px;
   font-size: 11px;
   color: var(--text-muted);
-}
-
-.message-actions {
-  display: flex;
-  gap: 4px;
-  opacity: 0;
-  transition: opacity 0.15s;
-}
-
-.message:hover .message-actions {
-  opacity: 1;
+  margin-top: 4px;
 }
 
 .live-stats {
