@@ -103,6 +103,7 @@ export function createRoomsView() {
             </div>
           </div>
           <div class="room-messages" id="room-messages" role="log" aria-live="polite" aria-label="Chat messages"></div>
+          <div class="xb-progress-bar" id="xb-progress-bar" hidden aria-live="polite" aria-label="Background task progress"></div>
           <div class="agent-typing-indicator" id="agent-typing-indicator" hidden aria-live="polite" aria-label="Agent activity"></div>
           <div class="room-composer">
             <div id="room-mention-menu" class="room-mention-menu" hidden role="listbox" aria-label="Mention suggestions"></div>

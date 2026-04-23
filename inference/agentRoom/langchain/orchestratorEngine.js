@@ -134,6 +134,7 @@ export function getMissingHandoffMessages({ senderName, postedMessages, handoffs
 
   const missingMessages = [];
   const queuedContents = new Set();
+  const queuedAgentNames = new Set();
 
   for (const handoff of handoffs || []) {
     const agentName = String(handoff?.agentName || '').toLowerCase();
@@ -142,7 +143,8 @@ export function getMissingHandoffMessages({ senderName, postedMessages, handoffs
       continue;
     }
 
-    if (existingHandoffTargets.has(agentName) || existingHandoffContents.has(content) || queuedContents.has(content)) {
+    // Deduplicate by target agent name AND by content
+    if (existingHandoffTargets.has(agentName) || existingHandoffContents.has(content) || queuedContents.has(content) || queuedAgentNames.has(agentName)) {
       continue;
     }
 
@@ -154,6 +156,7 @@ export function getMissingHandoffMessages({ senderName, postedMessages, handoffs
       created_at: nowUnix(),
     });
     queuedContents.add(content);
+    queuedAgentNames.add(agentName);
   }
 
   return missingMessages;
@@ -614,21 +617,25 @@ export class LangChainAgentRoomOrchestrator extends EventEmitter {
         // ── Fire-and-forget xb with progress tracking ────────
         const hasRouterModel = agent.router_config && Object.keys(agent.router_config).length > 0;
 
-        // 1. xa sends immediate smart acknowledgment
+        // 1. xa sends immediate acknowledgment
         if (hasRouterModel) {
           try {
             const ackResult = await runSimpleAgentTurn({
               agent,
               roomContext: { roomId, roomName: room.name, agents },
-              input: `The user asked: "${triggerContent}"\nYou are about to delegate this to the deep-work model. Send a brief, natural acknowledgment (1 sentence) that you're working on it. Do NOT attempt to answer the question itself.`,
+              input: `The user asked: "${triggerContent}"\nYou are delegating this to the deep-work model which will handle it. Send a brief, honest acknowledgment (1 sentence max). Be clear you're about to work on it, NOT that you've already done it. Examples: "Let me look into that.", "On it, give me a moment.", "I'll work on that now." Do NOT describe what you'll do in detail. Do NOT pretend you've already completed the task.`,
               conversationHistory: messages.slice(-2),
             });
-            const ackMessage = this.postAgentMessage(roomId, agent.name, ackResult.message || '⏳ Working on it...', 'message');
+            const ackMessage = this.postAgentMessage(roomId, agent.name, ackResult.message || '⏳ On it, give me a moment...', 'message');
             if (ackMessage) postedMessages.push(ackMessage);
           } catch (_ackErr) {
-            const ackMessage = this.postAgentMessage(roomId, agent.name, '⏳ Working on it...', 'message');
+            const ackMessage = this.postAgentMessage(roomId, agent.name, '⏳ On it, give me a moment...', 'message');
             if (ackMessage) postedMessages.push(ackMessage);
           }
+        } else {
+          // No router model configured — send static fallback ack
+          const ackMessage = this.postAgentMessage(roomId, agent.name, '⏳ On it, give me a moment...', 'message');
+          if (ackMessage) postedMessages.push(ackMessage);
         }
 
         // 2. Start progress tracking

@@ -11,6 +11,7 @@ import {
 import { setAgentTypingStatus, setAgentActivity, clearAllTypingIndicators } from './agentTypingIndicator.js';
 import { extractHandoffsFromMessage } from './agentHandoffViz.js';
 import { addRealtimeTokenUsage } from './agentTokenUsage.js';
+import { handleXbProgress, clearXbProgress } from './xbProgressBar.js';
 
 export function closeAgentSocket() {
   if (rs.agentRoomReconnectTimer) {
@@ -146,6 +147,11 @@ export function connectAgentRoomSocket() {
       return;
     }
 
+    if (payload.type === 'agent_room:xb_progress') {
+      handleXbProgress(payload);
+      return;
+    }
+
     if (payload.type === 'agent_room:token_usage') {
       if (payload.agent_name && payload.usage) {
         addRealtimeTokenUsage(payload.agent_name, payload.usage);
@@ -234,6 +240,7 @@ export function connectAgentRoomSocket() {
       rs.agentSocket = null;
       rs.agentRoomConnectionState = 'offline';
       clearAllTypingIndicators();
+      clearXbProgress();
       renderConnectionState();
       scheduleAgentReconnect();
     }
