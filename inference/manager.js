@@ -16,7 +16,7 @@ import { WebSocketServer } from 'ws';
 
 import { buildCacheKey, CACHE_TTLS, RequestCache, shouldCacheRequest } from './requestCache.js';
 import { sendCompressedJson } from './compression.js';
-import { getCacheStats } from './db/database.js';
+import { getCacheStats, closeDatabase } from './db/database.js';
 import { handleAgentRoomUpgrade } from './agentRoom/wsBridge.js';
 import { buildChatCompletionPayload, parseSseLine, splitSseLines } from './streamProxy.js';
 import { routeApiRequest } from './routes/apiRouter.js';
@@ -197,7 +197,7 @@ function pollGpuMetrics() {
 }
 
 pollGpuMetrics();
-const gpuPollInterval = setInterval(pollGpuMetrics, 5000);
+const gpuPollInterval = setInterval(pollGpuMetrics, 10_000); // 10s — GPU metrics don't change fast enough to justify 5s
 gpuPollInterval.unref(); // Don't prevent process exit
 
 const websocketServer = new WebSocketServer({ noServer: true, maxPayload: 256 * 1024 });
@@ -520,6 +520,17 @@ function streamUpstreamToSink(params, sink) {
         return;
       }
 
+      // Backpressure: if sink signals it's overwhelmed, pause upstream
+      if (sink.shouldPause && sink.shouldPause()) {
+        res.pause();
+        const checkResume = setInterval(() => {
+          if (!sink.shouldPause || !sink.shouldPause()) {
+            clearInterval(checkResume);
+            if (upstreamResponse) res.resume();
+          }
+        }, 50);
+      }
+
       const { lines, buffer } = splitSseLines(streamBuffer, chunk);
       streamBuffer = buffer;
 
@@ -598,6 +609,8 @@ function processQueue() {
         onDelta: (delta, channel) => wsSend(entry.ws, { type: 'delta', delta, channel }),
         onDone: () => { wsSend(entry.ws, { type: 'done' }); entry.cleanupRef = null; onComplete(); },
         onError: (msg) => { wsSend(entry.ws, { type: 'error', message: msg }); entry.cleanupRef = null; onComplete(); },
+        // Backpressure: pause upstream if WS send buffer exceeds 64KB
+        shouldPause: () => entry.ws.bufferedAmount > 65536,
       });
       entry.cleanupRef = handle.cleanup;
     } else if (entry.type === 'sse') {
@@ -621,11 +634,40 @@ function processQueue() {
   }
 }
 
+/**
+ * Estimate message complexity for priority ordering.
+ * Shorter conversations get higher priority (lower score = processed first).
+ */
+function estimateComplexity(params) {
+  const messages = params?.messages;
+  if (!Array.isArray(messages)) return 1;
+  // Total character count across all messages as a rough proxy
+  let totalChars = 0;
+  for (const m of messages) {
+    totalChars += (typeof m.content === 'string' ? m.content.length : 0);
+  }
+  // Normalize: <500 chars = priority 0, <2000 = 1, <8000 = 2, else 3
+  if (totalChars < 500) return 0;
+  if (totalChars < 2000) return 1;
+  if (totalChars < 8000) return 2;
+  return 3;
+}
+
 function enqueueRequest(entry) {
   if (requestQueue.length >= MAX_QUEUE_SIZE) {
     return false;
   }
-  requestQueue.push(entry);
+  entry.priority = estimateComplexity(entry.params);
+
+  // Insert in priority order (lower priority value = higher priority)
+  let insertIdx = requestQueue.length;
+  for (let i = 0; i < requestQueue.length; i++) {
+    if ((requestQueue[i].priority ?? 1) > entry.priority) {
+      insertIdx = i;
+      break;
+    }
+  }
+  requestQueue.splice(insertIdx, 0, entry);
   processQueue();
   return true;
 }
@@ -1164,12 +1206,14 @@ process.on('uncaughtException', (err) => {
 // Graceful shutdown
 process.on('SIGINT', async () => {
   log('Shutting down...');
+  closeDatabase();
   await killServer();
   process.exit(0);
 });
 
 process.on('SIGTERM', async () => {
   log('Shutting down...');
+  closeDatabase();
   await killServer();
   process.exit(0);
 });

@@ -31,6 +31,15 @@ db.pragma('cache_size = -64000');    // 64 MB page cache (default ~2 MB)
 db.pragma('mmap_size = 268435456');  // 256 MB memory-mapped I/O
 db.pragma('temp_store = MEMORY');    // Temp tables in RAM instead of disk
 
+// ── Read-Only Connection ───────────────────────────────────────
+// WAL mode allows concurrent readers. A separate read-only connection
+// avoids blocking writes and benefits from its own page cache.
+const readDb = new Database(DB_PATH, { readonly: true });
+readDb.pragma('journal_mode = WAL');
+readDb.pragma('cache_size = -32000');   // 32 MB read cache
+readDb.pragma('mmap_size = 268435456');
+readDb.pragma('temp_store = MEMORY');
+
 // ── LRU Caches (hot-path reads) ───────────────────────────────
 const userCache = new LRUCache(500, 120_000);       // Users: 2 min TTL
 const conversationCache = new LRUCache(200, 60_000); // Conversations: 1 min TTL
@@ -71,10 +80,10 @@ const stmts = {
     INSERT INTO users (id, username, email, password_hash, display_name)
     VALUES (?, ?, ?, ?, ?)
   `),
-  findUserByUsername: db.prepare(`SELECT * FROM users WHERE username = ?`),
-  findUserByEmail: db.prepare(`SELECT * FROM users WHERE email = ?`),
-  findUserById: db.prepare(`SELECT * FROM users WHERE id = ?`),
-  findUserPublic: db.prepare(`SELECT id, username, display_name, avatar_url, created_at FROM users WHERE id = ?`),
+  findUserByUsername: readDb.prepare(`SELECT * FROM users WHERE username = ?`),
+  findUserByEmail: readDb.prepare(`SELECT * FROM users WHERE email = ?`),
+  findUserById: readDb.prepare(`SELECT * FROM users WHERE id = ?`),
+  findUserPublic: readDb.prepare(`SELECT id, username, display_name, avatar_url, created_at FROM users WHERE id = ?`),
   updateDisplayName: db.prepare(`UPDATE users SET display_name = ?, updated_at = unixepoch() WHERE id = ?`),
   updateAvatar: db.prepare(`UPDATE users SET avatar_url = ?, updated_at = unixepoch() WHERE id = ?`),
   updatePassword: db.prepare(`UPDATE users SET password_hash = ?, updated_at = unixepoch() WHERE id = ?`),
@@ -84,7 +93,7 @@ const stmts = {
     INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at)
     VALUES (?, ?, ?, ?)
   `),
-  findRefreshToken: db.prepare(`SELECT * FROM refresh_tokens WHERE token_hash = ? AND revoked = 0`),
+  findRefreshToken: readDb.prepare(`SELECT * FROM refresh_tokens WHERE token_hash = ? AND revoked = 0`),
   revokeRefreshToken: db.prepare(`UPDATE refresh_tokens SET revoked = 1 WHERE id = ?`),
   revokeAllUserTokens: db.prepare(`UPDATE refresh_tokens SET revoked = 1 WHERE user_id = ?`),
   cleanupExpiredTokens: db.prepare(`DELETE FROM refresh_tokens WHERE expires_at < unixepoch() OR revoked = 1`),
@@ -99,8 +108,8 @@ const stmts = {
       folder_id = excluded.folder_id,
       updated_at = unixepoch()
   `),
-  getConversation: db.prepare(`SELECT * FROM conversations WHERE id = ?`),
-  getUserConversations: db.prepare(`
+  getConversation: readDb.prepare(`SELECT * FROM conversations WHERE id = ?`),
+  getUserConversations: readDb.prepare(`
     SELECT id, user_id, title, folder_id, is_shared, created_at, updated_at
     FROM conversations WHERE user_id = ? ORDER BY updated_at DESC
   `),
@@ -114,7 +123,7 @@ const stmts = {
     INSERT INTO shared_chats (id, conversation_id, shared_by, share_token, access_level, expires_at)
     VALUES (?, ?, ?, ?, ?, ?)
   `),
-  getSharedChat: db.prepare(`
+  getSharedChat: readDb.prepare(`
     SELECT sc.*, c.title, c.messages, u.username AS shared_by_username
     FROM shared_chats sc
     JOIN conversations c ON c.id = sc.conversation_id
@@ -122,7 +131,7 @@ const stmts = {
     WHERE sc.share_token = ?
   `),
   deleteSharedChat: db.prepare(`DELETE FROM shared_chats WHERE id = ? AND shared_by = ?`),
-  getConversationShares: db.prepare(`SELECT * FROM shared_chats WHERE conversation_id = ?`),
+  getConversationShares: readDb.prepare(`SELECT * FROM shared_chats WHERE conversation_id = ?`),
   cleanupExpiredShares: db.prepare(`DELETE FROM shared_chats WHERE expires_at IS NOT NULL AND expires_at < unixepoch()`),
 
   // Project rooms
@@ -130,9 +139,9 @@ const stmts = {
     INSERT INTO project_rooms (id, name, description, category, owner_id, invite_code)
     VALUES (?, ?, ?, ?, ?, ?)
   `),
-  getProjectRoom: db.prepare(`SELECT * FROM project_rooms WHERE id = ?`),
-  getRoomByInviteCode: db.prepare(`SELECT * FROM project_rooms WHERE invite_code = ? AND is_active = 1`),
-  getUserRooms: db.prepare(`
+  getProjectRoom: readDb.prepare(`SELECT * FROM project_rooms WHERE id = ?`),
+  getRoomByInviteCode: readDb.prepare(`SELECT * FROM project_rooms WHERE invite_code = ? AND is_active = 1`),
+  getUserRooms: readDb.prepare(`
     SELECT pr.*, rm.role, rm.joined_at,
       (SELECT COUNT(*) FROM room_members WHERE room_id = pr.id) AS member_count
     FROM project_rooms pr
@@ -147,22 +156,22 @@ const stmts = {
     INSERT OR IGNORE INTO room_members (room_id, user_id, role) VALUES (?, ?, ?)
   `),
   removeRoomMember: db.prepare(`DELETE FROM room_members WHERE room_id = ? AND user_id = ?`),
-  getRoomMembers: db.prepare(`
+  getRoomMembers: readDb.prepare(`
     SELECT rm.*, u.username, u.display_name, u.avatar_url
     FROM room_members rm
     JOIN users u ON u.id = rm.user_id
     WHERE rm.room_id = ?
     ORDER BY rm.joined_at ASC
   `),
-  isRoomMember: db.prepare(`SELECT 1 FROM room_members WHERE room_id = ? AND user_id = ?`),
-  getRoomMemberRole: db.prepare(`SELECT role FROM room_members WHERE room_id = ? AND user_id = ?`),
+  isRoomMember: readDb.prepare(`SELECT 1 FROM room_members WHERE room_id = ? AND user_id = ?`),
+  getRoomMemberRole: readDb.prepare(`SELECT role FROM room_members WHERE room_id = ? AND user_id = ?`),
 
   // Room messages
   saveRoomMessage: db.prepare(`
     INSERT INTO room_messages (id, room_id, user_id, content, message_type)
     VALUES (?, ?, ?, ?, ?)
   `),
-  getRoomMessages: db.prepare(`
+  getRoomMessages: readDb.prepare(`
     SELECT rm.*, u.username, u.display_name, u.avatar_url
     FROM room_messages rm
     JOIN users u ON u.id = rm.user_id
@@ -170,7 +179,7 @@ const stmts = {
     ORDER BY rm.created_at DESC
     LIMIT ?
   `),
-  getLatestRoomMessages: db.prepare(`
+  getLatestRoomMessages: readDb.prepare(`
     SELECT rm.*, u.username, u.display_name, u.avatar_url
     FROM room_messages rm
     JOIN users u ON u.id = rm.user_id
@@ -186,13 +195,13 @@ const stmts = {
     )
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `),
-  getAgentRoom: db.prepare(`SELECT * FROM agent_rooms WHERE id = ? AND is_active = 1`),
-  getAgentRoomForUser: db.prepare(`SELECT * FROM agent_rooms WHERE id = ? AND owner_id = ? AND is_active = 1`),
-  getAgentRoomByProjectRoomId: db.prepare(`
+  getAgentRoom: readDb.prepare(`SELECT * FROM agent_rooms WHERE id = ? AND is_active = 1`),
+  getAgentRoomForUser: readDb.prepare(`SELECT * FROM agent_rooms WHERE id = ? AND owner_id = ? AND is_active = 1`),
+  getAgentRoomByProjectRoomId: readDb.prepare(`
     SELECT * FROM agent_rooms
     WHERE project_room_id = ? AND is_active = 1
   `),
-  listAgentRoomsByOwner: db.prepare(`
+  listAgentRoomsByOwner: readDb.prepare(`
     SELECT ar.*,
       (SELECT COUNT(*) FROM agent_room_agents ara WHERE ara.room_id = ar.id) AS agent_count,
       (SELECT COUNT(*) FROM agent_room_messages arm WHERE arm.room_id = ar.id) AS message_count
@@ -213,12 +222,12 @@ const stmts = {
     INSERT INTO agent_room_agents (id, room_id, name, role, model_tier, system_prompt, tools_json, provider_config_json)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `),
-  listAgentRoomAgents: db.prepare(`
+  listAgentRoomAgents: readDb.prepare(`
     SELECT * FROM agent_room_agents
     WHERE room_id = ?
     ORDER BY created_at ASC
   `),
-  getAgentRoomAgent: db.prepare(`
+  getAgentRoomAgent: readDb.prepare(`
     SELECT * FROM agent_room_agents
     WHERE room_id = ? AND name = ?
   `),
@@ -241,7 +250,7 @@ const stmts = {
     INSERT INTO agent_room_messages (id, room_id, sender_type, sender_name, content, event_type, artifacts)
     VALUES (?, ?, ?, ?, ?, ?, ?)
   `),
-  listAgentRoomMessages: db.prepare(`
+  listAgentRoomMessages: readDb.prepare(`
     SELECT * FROM agent_room_messages
     WHERE room_id = ?
     ORDER BY created_at DESC, rowid DESC
@@ -249,7 +258,7 @@ const stmts = {
   `),
 
   // Agent room memories
-  getAgentRoomMemory: db.prepare(`
+  getAgentRoomMemory: readDb.prepare(`
     SELECT memory_text, updated_at
     FROM agent_room_memories
     WHERE room_id = ? AND agent_name = ?
@@ -261,7 +270,7 @@ const stmts = {
       memory_text = excluded.memory_text,
       updated_at = unixepoch()
   `),
-  listAgentRoomMemories: db.prepare(`
+  listAgentRoomMemories: readDb.prepare(`
     SELECT agent_name, memory_text, updated_at
     FROM agent_room_memories
     WHERE room_id = ?
@@ -908,6 +917,12 @@ export function getCacheStats() {
     conversation: conversationCache.stats(),
     room: roomCache.stats(),
   };
+}
+
+/** Close both database connections. Call on graceful shutdown. */
+export function closeDatabase() {
+  try { readDb.close(); } catch { /* already closed */ }
+  try { db.close(); } catch { /* already closed */ }
 }
 
 export default db;

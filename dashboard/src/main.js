@@ -37,6 +37,7 @@ import { renderObservabilityCards, recordLatency, recordError } from './observab
 
 // Side-effect imports — register their own DOM event listeners on load
 import './playgroundManager.js';
+import { preloadRenderingLibs } from './lazyLibs.js';
 
 // ── Auth & Rooms ───────────────────────────────────────────
 import { initAuthUI, showAuthModal, onLoginSuccess } from './authUI.js';
@@ -518,5 +519,18 @@ updateContextBar();
 updateTokenInfo();
 checkShareUrl();
 
+// Lazy-load CDN rendering libraries after first user interaction
+// (saves ~200-400ms on initial page load)
+const triggerPreload = () => {
+  preloadRenderingLibs();
+  document.removeEventListener('keydown', triggerPreload);
+  document.removeEventListener('click', triggerPreload);
+  document.removeEventListener('touchstart', triggerPreload);
+};
+document.addEventListener('keydown', triggerPreload, { once: true, passive: true });
+document.addEventListener('click', triggerPreload, { once: true, passive: true });
+document.addEventListener('touchstart', triggerPreload, { once: true, passive: true });
+
+// Initialize mermaid when it becomes available (loaded lazily)
 if (typeof mermaid !== 'undefined') mermaid.initialize({ startOnLoad: false, theme: 'dark' });
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
