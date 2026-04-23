@@ -7,16 +7,26 @@ const agentRoomWss = new WebSocketServer({ noServer: true, maxPayload: 128 * 102
 const roomSockets = new Map();
 const roomUserSocketCounts = new Map();
 const DASHBOARD_ORIGIN = process.env.DASHBOARD_ORIGIN || '';
+const NGROK_DOMAIN = process.env.NGROK_DOMAIN || '';
 const MAX_ROOM_SOCKETS_PER_USER = 3;
 
 function isAllowedDashboardOrigin(origin) {
   if (!origin) return true;
 
+  const allowedOrigins = [];
+
   if (DASHBOARD_ORIGIN) {
-    const allowedOrigins = DASHBOARD_ORIGIN
-      .split(',')
-      .map((value) => value.trim())
-      .filter(Boolean);
+    allowedOrigins.push(
+      ...DASHBOARD_ORIGIN.split(',').map((v) => v.trim()).filter(Boolean),
+    );
+  }
+
+  // Auto-allow ngrok domain when configured
+  if (NGROK_DOMAIN) {
+    allowedOrigins.push(`https://${NGROK_DOMAIN}`, `http://${NGROK_DOMAIN}`);
+  }
+
+  if (allowedOrigins.length > 0) {
     return allowedOrigins.includes(origin);
   }
 

@@ -72,19 +72,28 @@ let currentMode = null;
 let serverProcess = null;
 
 function getDashboardOrigins() {
+  const origins = [];
+
   if (DASHBOARD_ORIGIN) {
-    return DASHBOARD_ORIGIN
-      .split(',')
-      .map((value) => value.trim())
-      .filter(Boolean);
+    origins.push(
+      ...DASHBOARD_ORIGIN.split(',').map((v) => v.trim()).filter(Boolean),
+    );
+  } else {
+    origins.push(
+      'http://localhost:3000',
+      'http://localhost:3001',
+      'http://127.0.0.1:3000',
+      'http://127.0.0.1:3001',
+    );
   }
 
-  return [
-    'http://localhost:3000',
-    'http://localhost:3001',
-    'http://127.0.0.1:3000',
-    'http://127.0.0.1:3001',
-  ];
+  // Auto-allow ngrok domain when configured
+  const ngrokDomain = process.env.NGROK_DOMAIN || '';
+  if (ngrokDomain) {
+    origins.push(`https://${ngrokDomain}`, `http://${ngrokDomain}`);
+  }
+
+  return origins;
 }
 
 function getCorsOrigin(requestOrigin) {

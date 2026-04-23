@@ -23,14 +23,21 @@ export function closeAgentSocket() {
   rs.agentRoomConnectionState = rs.currentAgentRoomId ? 'offline' : 'idle';
 }
 
+const RECONNECT_BASE_MS = 1500;
+const RECONNECT_MAX_MS = 30000;
+let reconnectAttempt = 0;
+
 export function scheduleAgentReconnect() {
   if (rs.agentRoomReconnectTimer || !rs.currentAgentRoomId || !isAuthenticated()) return;
   rs.agentRoomConnectionState = 'reconnecting';
   renderConnectionState();
+  // Exponential backoff: 1.5s → 3s → 6s → 12s → 24s → 30s (cap)
+  const delay = Math.min(RECONNECT_BASE_MS * Math.pow(2, reconnectAttempt), RECONNECT_MAX_MS);
+  reconnectAttempt++;
   rs.agentRoomReconnectTimer = setTimeout(() => {
     rs.agentRoomReconnectTimer = null;
     connectAgentRoomSocket();
-  }, 1500);
+  }, delay);
 }
 
 export function connectAgentRoomSocket() {
@@ -48,6 +55,7 @@ export function connectAgentRoomSocket() {
 
   socket.addEventListener('open', () => {
     rs.agentRoomConnectionState = 'connected';
+    reconnectAttempt = 0; // Reset backoff on successful connection
     renderConnectionState();
   });
 
