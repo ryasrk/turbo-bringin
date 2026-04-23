@@ -144,7 +144,8 @@ Always end your response with a clear message about what you did or what you thi
 If you want to hand off to another agent, use @agent_name in your message.
 Never hand work off to yourself.
 
-${roomContext.privateMemory ? `## Your Private Memory\n${roomContext.privateMemory}` : ''}`;
+${roomContext.privateMemory ? `## Your Private Memory\n${roomContext.privateMemory}` : ''}
+${roomContext.skillPromptBlock || ''}`;
 }
 
 /**

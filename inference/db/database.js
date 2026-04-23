@@ -366,6 +366,19 @@ const stmts = {
     DELETE FROM agent_room_snapshots
     WHERE room_id = ? AND id = ?
   `),
+
+  // ── Room Skills ──────────────────────────────────────────────
+  addRoomSkill: db.prepare(`
+    INSERT OR IGNORE INTO agent_room_skills (id, room_id, skill_id, added_by)
+    VALUES (?, ?, ?, ?)
+  `),
+  removeRoomSkill: db.prepare(`
+    DELETE FROM agent_room_skills WHERE room_id = ? AND skill_id = ?
+  `),
+  listRoomSkills: db.prepare(`
+    SELECT skill_id, added_by, added_at FROM agent_room_skills
+    WHERE room_id = ? ORDER BY added_at ASC
+  `),
 };
 
 // ── Transactions ───────────────────────────────────────────────
@@ -813,6 +826,25 @@ export function getSnapshot(roomId, snapshotId) {
 export function deleteSnapshot(roomId, snapshotId) {
   const info = stmts.deleteSnapshot.run(roomId, snapshotId);
   return info.changes > 0;
+}
+
+// ── Room Skills ────────────────────────────────────────────────
+
+export function addRoomSkill(roomId, skillId, addedBy) {
+  const id = uuid();
+  stmts.addRoomSkill.run(id, roomId, skillId, addedBy);
+  touchAgentRoom(roomId);
+  return id;
+}
+
+export function removeRoomSkill(roomId, skillId) {
+  const info = stmts.removeRoomSkill.run(roomId, skillId);
+  touchAgentRoom(roomId);
+  return info.changes > 0;
+}
+
+export function listRoomSkills(roomId) {
+  return stmts.listRoomSkills.all(roomId);
 }
 
 // Periodic cleanup

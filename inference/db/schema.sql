@@ -226,6 +226,18 @@ CREATE TABLE IF NOT EXISTS agent_room_snapshots (
 CREATE INDEX IF NOT EXISTS idx_agent_room_snapshots_room_id ON agent_room_snapshots(room_id);
 CREATE INDEX IF NOT EXISTS idx_agent_room_snapshots_created ON agent_room_snapshots(created_at);
 
+-- ── Agent Room Skills ──────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS agent_room_skills (
+    id          TEXT PRIMARY KEY,
+    room_id     TEXT NOT NULL REFERENCES agent_rooms(id) ON DELETE CASCADE,
+    skill_id    TEXT NOT NULL,
+    added_by    TEXT NOT NULL REFERENCES users(id),
+    added_at    INTEGER DEFAULT (unixepoch()),
+    UNIQUE(room_id, skill_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_room_skills_room_id ON agent_room_skills(room_id);
+
 -- ── Shared Chats ───────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS shared_chats (
     id              TEXT PRIMARY KEY,

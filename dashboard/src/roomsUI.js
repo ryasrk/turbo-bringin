@@ -37,6 +37,7 @@ import { loadTokenUsage } from './agentTokenUsage.js';
 import { resetHandoffTimeline, renderHandoffTimeline, extractHandoffsFromMessage } from './agentHandoffViz.js';
 import { clearAllTypingIndicators } from './agentTypingIndicator.js';
 import { loadSnapshots, clearSnapshots, renderSnapshotSection } from './agentSnapshots.js';
+import { loadSkills, clearSkills, renderSkillSection } from './agentSkills.js';
 
 // ── Rooms Panel (sidebar-like list) ────────────────────────────
 
@@ -273,6 +274,7 @@ export function createRoomsView() {
             <div id="agent-room-progress-items" class="workspace-panel-body workspace-progress-list"></div>
           </div>
           <div id="agent-room-snapshots" class="workspace-panel workspace-panel-snapshots"></div>
+          <div id="agent-room-skills" class="workspace-panel workspace-panel-skills"></div>
         </div>
         <div class="workspace-main">
           <div class="workspace-preview-header">
@@ -694,6 +696,8 @@ export function initRoomsUI() {
       handleArtifactsClick();
       const snapshotContainer = rs.panel?.querySelector('#agent-room-snapshots');
       if (snapshotContainer) loadSnapshots(snapshotContainer);
+      const skillContainer = rs.panel?.querySelector('#agent-room-skills');
+      if (skillContainer) loadSkills(skillContainer);
     });
   }
 
@@ -894,6 +898,7 @@ export async function openRoomChat(roomId) {
   closeAgentSocket();
   resetAgentRoomSidebar();
   clearSnapshots();
+  clearSkills();
   const roomsPage = rs.panel.querySelector('.rooms-page');
   const roomChat = rs.panel.querySelector('#room-chat');
   const roomNote = rs.panel.querySelector('#room-chat-note');

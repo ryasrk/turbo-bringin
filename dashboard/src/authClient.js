@@ -478,6 +478,28 @@ export async function deleteAgentRoomSnapshot(roomId, snapshotId) {
   return apiDelete(`/api/agent-rooms/${roomId}/snapshots/${snapshotId}`, true);
 }
 
+// ── Skills ─────────────────────────────────────────────────────
+
+export async function listSkillsCatalog() {
+  return apiGet('/api/skills', true);
+}
+
+export async function getSkillDetail(skillId) {
+  return apiGet(`/api/skills/${skillId}`, true);
+}
+
+export async function listRoomSkills(roomId) {
+  return apiGet(`/api/agent-rooms/${roomId}/skills`, true);
+}
+
+export async function addRoomSkill(roomId, skillId) {
+  return apiPost(`/api/agent-rooms/${roomId}/skills`, { skillId }, true);
+}
+
+export async function removeRoomSkill(roomId, skillId) {
+  return apiDelete(`/api/agent-rooms/${roomId}/skills/${skillId}`, true);
+}
+
 // ── Init ───────────────────────────────────────────────────────
 
 export function initAuth() {

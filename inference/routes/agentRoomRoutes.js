@@ -5,6 +5,7 @@ import { basename, dirname, extname, join } from 'path';
 import { fileURLToPath } from 'url';
 
 import {
+  addRoomSkill,
   canAccessAgentRoom,
   clearAgentRoomMemory,
   createAgentRoomAgent,
@@ -27,7 +28,9 @@ import {
   listAgentRoomMessages,
   listAgentRoomTasks,
   listAgentRoomsByOwner,
+  listRoomSkills,
   listSnapshots,
+  removeRoomSkill,
   saveAgentRoomLog,
   saveAgentRoomMemory,
   upsertAgentRoomFileReview,
@@ -38,6 +41,7 @@ import {
   deleteAgentRoom,
 } from '../db/database.js';
 import { buildDefaultAgents } from '../agentRoom/defaultAgents.js';
+import { listAvailableSkills, getSkillContent, readSkillDataFile } from '../agentRoom/skillLoader.js';
 import { ensureWorkspace, listFiles, readFile, safePath, updateFile, writeFile } from '../agentRoom/fileTools.js';
 import { ensureWorkspacePythonEnv, runWorkspacePythonFile } from '../agentRoom/workspaceRuntime.js';
 import { fetchProviderModelsForUi, getProviderPresetsForUi } from '../agentRoom/modelRouter.js';
@@ -1051,6 +1055,71 @@ export async function handleAgentRoomRoute(path, url, req, res) {
     if (!room) return true;
     const deleted = deleteSnapshot(room.id, snapshotDetailMatch[2]);
     if (!deleted) { sendJson(res, 404, { error: 'Snapshot not found' }); return true; }
+    sendJson(res, 200, { ok: true });
+    return true;
+  }
+
+  // ── Skills: global catalog ─────────────────────────────────────
+  if (path === '/api/skills' && req.method === 'GET') {
+    const skills = await listAvailableSkills();
+    sendJson(res, 200, { skills });
+    return true;
+  }
+
+  const skillDetailMatch = path.match(/^\/api\/skills\/([^/]+)$/);
+  if (skillDetailMatch && req.method === 'GET') {
+    const skill = await getSkillContent(skillDetailMatch[1]);
+    if (!skill) { sendJson(res, 404, { error: 'Skill not found' }); return true; }
+    sendJson(res, 200, { skill: { id: skillDetailMatch[1], ...skill } });
+    return true;
+  }
+
+  const skillDataMatch = path.match(/^\/api\/skills\/([^/]+)\/data\/([^/]+)$/);
+  if (skillDataMatch && req.method === 'GET') {
+    const data = await readSkillDataFile(skillDataMatch[1], skillDataMatch[2]);
+    if (data === null) { sendJson(res, 404, { error: 'Data file not found' }); return true; }
+    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end(data);
+    return true;
+  }
+
+  // ── Skills: room-level assignment ──────────────────────────────
+  const roomSkillsMatch = path.match(/^\/api\/agent-rooms\/([^/]+)\/skills$/);
+  if (roomSkillsMatch && req.method === 'GET') {
+    const room = getAccessibleRoomOrReject(roomSkillsMatch[1], userId, res);
+    if (!room) return true;
+    const assigned = listRoomSkills(room.id);
+    // Enrich with skill metadata
+    const catalog = await listAvailableSkills();
+    const catalogMap = Object.fromEntries(catalog.map((s) => [s.id, s]));
+    const skills = assigned.map((row) => ({
+      ...row,
+      ...(catalogMap[row.skill_id] || { name: row.skill_id, description: '' }),
+    }));
+    sendJson(res, 200, { skills });
+    return true;
+  }
+
+  if (roomSkillsMatch && req.method === 'POST') {
+    const room = getAccessibleRoomOrReject(roomSkillsMatch[1], userId, res);
+    if (!room) return true;
+    const body = await readBody(req);
+    const { skillId } = body;
+    if (!skillId) { sendJson(res, 400, { error: 'skillId required' }); return true; }
+    // Verify skill exists
+    const skill = await getSkillContent(skillId);
+    if (!skill) { sendJson(res, 404, { error: 'Skill not found in catalog' }); return true; }
+    addRoomSkill(room.id, skillId, userId);
+    sendJson(res, 200, { ok: true });
+    return true;
+  }
+
+  const roomSkillDetailMatch = path.match(/^\/api\/agent-rooms\/([^/]+)\/skills\/([^/]+)$/);
+  if (roomSkillDetailMatch && req.method === 'DELETE') {
+    const room = getAccessibleRoomOrReject(roomSkillDetailMatch[1], userId, res);
+    if (!room) return true;
+    const removed = removeRoomSkill(room.id, roomSkillDetailMatch[2]);
+    if (!removed) { sendJson(res, 404, { error: 'Skill not assigned to this room' }); return true; }
     sendJson(res, 200, { ok: true });
     return true;
   }

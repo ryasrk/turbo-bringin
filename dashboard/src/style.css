@@ -6133,6 +6133,133 @@ details.token-usage-history > summary:hover {
   border-bottom: 1px solid var(--border-subtle, rgba(255,255,255,0.04));
 }
 
+/* ── Agent Room Skills ─────────────────────────────────────────── */
+
+.workspace-panel-skills {
+  margin-top: 4px;
+}
+
+.skill-section {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.skill-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+  color: var(--text-secondary);
+}
+
+.skill-header::-webkit-details-marker { display: none; }
+.skill-section[open] .skill-header { border-bottom: 1px solid var(--border); }
+
+.skill-count {
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.7rem;
+  padding: 1px 6px;
+  border-radius: 10px;
+  min-width: 18px;
+  text-align: center;
+}
+
+.skill-body {
+  padding: 8px;
+}
+
+.skill-add-row {
+  margin-bottom: 8px;
+}
+
+.skill-select {
+  width: 100%;
+  padding: 5px 8px;
+  font-size: 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  outline: none;
+  cursor: pointer;
+}
+
+.skill-select:focus {
+  border-color: var(--accent);
+}
+
+.skill-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.skill-loading,
+.skill-empty {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 12px 0;
+}
+
+.skill-item {
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.skill-item:hover {
+  background: var(--bg-hover);
+  border-color: var(--border);
+}
+
+.skill-item-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.skill-item-name {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.skill-remove-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 1rem;
+  padding: 0 2px;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.skill-item:hover .skill-remove-btn { opacity: 1; }
+.skill-remove-btn:hover { color: var(--error); }
+
+.skill-item-desc {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+  line-height: 1.3;
+}
+
 /* ── F2: Stream State Indicator ────────────────────────────────── */
 
 .stream-state-indicator {
