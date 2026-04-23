@@ -1,0 +1,190 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+
+import { extractToolCalls, getAllowedCollaborationToolNames, getRoleOperatingGuidance, getToolCallingMode, shouldAgentRespond } from './reactiveAgent.js';
+
+const agents = [
+  { name: 'planner', role: 'Breaks work into steps and coordinates implementation.', system_prompt: '' },
+  { name: 'coder', role: 'Implements code and updates files in the workspace.', system_prompt: '' },
+  { name: 'reviewer', role: 'Reviews proposals and checks quality risks.', system_prompt: '' },
+];
+
+test('shouldAgentRespond returns direct-mention priority', () => {
+  const decision = shouldAgentRespond(
+    agents[1],
+    { sender_type: 'user', sender_name: 'alice', content: '@coder please update the parser', event_type: 'message' },
+    { agents },
+  );
+
+  assert.equal(decision.respond, true);
+  assert.equal(decision.reason, 'directly_mentioned');
+  assert.equal(decision.priority, 1);
+});
+
+test('shouldAgentRespond gives planner default ownership for unmentioned user messages', () => {
+  const decision = shouldAgentRespond(
+    agents[0],
+    { sender_type: 'user', sender_name: 'alice', content: 'Build a new agent room workflow', event_type: 'message' },
+    { agents },
+  );
+
+  assert.equal(decision.respond, true);
+  assert.equal(decision.reason, 'planner_default');
+});
+
+test('shouldAgentRespond asks reviewers to inspect proposals sent to all', () => {
+  const decision = shouldAgentRespond(
+    agents[2],
+    { sender_type: 'agent', sender_name: 'planner', content: 'Proposal: use a queue\n\nReview requested from: @all', event_type: 'proposal' },
+    { agents },
+  );
+
+  assert.equal(decision.respond, true);
+  assert.equal(decision.reason, 'proposal_review_requested');
+});
+
+test('shouldAgentRespond ignores unrelated messages for non-planner agents', () => {
+  const decision = shouldAgentRespond(
+    agents[1],
+    { sender_type: 'agent', sender_name: 'scribe', content: 'Summary written to notes/summary.md', event_type: 'message' },
+    { agents },
+  );
+
+  assert.equal(decision.respond, false);
+  assert.equal(decision.reason, 'not_relevant');
+});
+
+test('extractToolCalls normalizes nested args and common field aliases', () => {
+  const calls = extractToolCalls([
+    '```json',
+    JSON.stringify({ tool: 'read_file', arguments: { file_path: 'notes/plan.md' } }),
+    '```',
+    '```json',
+    JSON.stringify({ tool: 'write_file', params: { filePath: 'src/calculator.js', contents: 'export const ok = true;\n' } }),
+    '```',
+    '```json',
+    JSON.stringify({ tool: 'delegate', args: { to: '@Reviewer', instructions: 'Review src/calculator.js', details: 'Check correctness.' } }),
+    '```',
+  ].join('\n'));
+
+  assert.deepEqual(calls, [
+    { tool: 'read_file', path: 'notes/plan.md' },
+    { tool: 'write_file', path: 'src/calculator.js', content: 'export const ok = true;\n' },
+    { tool: 'delegate', to_agent: 'reviewer', task: 'Review src/calculator.js', context: 'Check correctness.' },
+  ]);
+});
+
+test('extractToolCalls parses whole-response JSON payloads with nested params', () => {
+  const calls = extractToolCalls(JSON.stringify({
+    tool: 'propose',
+    params: {
+      title: 'Calculator plan',
+      content: 'Build the calculator in small steps.',
+      request_review_from: ['reviewer'],
+    },
+  }));
+
+  assert.deepEqual(calls, [
+    {
+      tool: 'propose',
+      title: 'Calculator plan',
+      content: 'Build the calculator in small steps.',
+      request_review_from: ['reviewer'],
+    },
+  ]);
+});
+
+test('extractToolCalls derives file paths and collaboration targets from local-model alias shapes', () => {
+  const calls = extractToolCalls([
+    '```json',
+    JSON.stringify({
+      tool: 'write_file',
+      arguments: {
+        directory: 'notes',
+        filename: 'plan.md',
+        body: '# Plan\n- Build calculator\n',
+      },
+    }),
+    '```',
+    '```json',
+    JSON.stringify({
+      tool: 'propose',
+      params: {
+        proposal_title: 'Calculator implementation plan',
+        description: 'Build a simple calculator with planning, coding, and review.',
+        requested_reviewers: ['@reviewer'],
+      },
+    }),
+    '```',
+    '```json',
+    JSON.stringify({
+      tool: 'delegate',
+      args: {
+        message: '@coder Implement src/calculator.js',
+        background: 'Use notes/plan.md first.',
+      },
+    }),
+    '```',
+  ].join('\n'));
+
+  assert.deepEqual(calls, [
+    { tool: 'write_file', path: 'notes/plan.md', content: '# Plan\n- Build calculator\n' },
+    {
+      tool: 'propose',
+      title: 'Calculator implementation plan',
+      content: 'Build a simple calculator with planning, coding, and review.',
+      request_review_from: ['reviewer'],
+    },
+    {
+      tool: 'delegate',
+      to_agent: 'coder',
+      task: 'Implement src/calculator.js',
+      context: 'Use notes/plan.md first.',
+    },
+  ]);
+});
+
+test('extractToolCalls parses leading JSON payloads followed by prose', () => {
+  const calls = extractToolCalls('{"tool":"list_files","params":{}}\n\nI listed the workspace first.');
+
+  assert.deepEqual(calls, [
+    { tool: 'list_files', path: '.' },
+  ]);
+});
+
+test('getToolCallingMode defaults local and tier-local agents to text mode', () => {
+  assert.equal(getToolCallingMode({ provider_config: { provider: 'local' } }), 'text');
+
+  const previousBaseUrl = process.env.ENOWXAI_BASE_URL;
+  delete process.env.ENOWXAI_BASE_URL;
+  try {
+    assert.equal(getToolCallingMode({ provider_config: {} }), 'text');
+  } finally {
+    if (previousBaseUrl === undefined) {
+      delete process.env.ENOWXAI_BASE_URL;
+    } else {
+      process.env.ENOWXAI_BASE_URL = previousBaseUrl;
+    }
+  }
+});
+
+test('getRoleOperatingGuidance keeps planner, coder, and reviewer scoped to their role', () => {
+  assert.ok(getRoleOperatingGuidance({ name: 'planner' }).some((line) => line.includes('Delegate implementation to @coder')));
+  assert.ok(getRoleOperatingGuidance({ name: 'coder' }).some((line) => line.includes('Do not hand work off to yourself')));
+  assert.ok(getRoleOperatingGuidance({ name: 'reviewer' }).some((line) => line.includes('Do not create or overwrite production code in src/')));
+});
+
+test('getAllowedCollaborationToolNames narrows collaboration tools by role', () => {
+  assert.deepEqual(
+    [...getAllowedCollaborationToolNames({ name: 'planner' })].sort(),
+    ['delegate', 'propose', 'think_aloud'],
+  );
+  assert.deepEqual(
+    [...getAllowedCollaborationToolNames({ name: 'coder' })].sort(),
+    ['delegate', 'think_aloud'],
+  );
+  assert.deepEqual(
+    [...getAllowedCollaborationToolNames({ name: 'reviewer' })].sort(),
+    ['respond_to_proposal', 'think_aloud'],
+  );
+});

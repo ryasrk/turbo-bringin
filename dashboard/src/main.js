@@ -30,10 +30,16 @@ import { listConversations, getActiveConversationId } from './chatStorage.js';
 import { searchConversations, renderConversationList } from './conversationManager.js';
 import { formatTokenCount, getAnalyticsSummary } from './tokenCounter.js';
 import { resolveModeModel } from './providerConfig.js';
+import { fetchEnowxProviderModels, pickPreferredProviderModel } from './providerModels.js';
 import { showToast } from './utils.js';
 
 // Side-effect imports — register their own DOM event listeners on load
 import './playgroundManager.js';
+
+// ── Auth & Rooms ───────────────────────────────────────────
+import { initAuthUI, showAuthModal, onLoginSuccess } from './authUI.js';
+import { isAuthenticated, getCurrentUser } from './authClient.js';
+import { createRoomsView, initRoomsUI, refreshRoomsList, cleanupRooms, openRoomChat, openAgentRoomChat, closeRoomChat } from './roomsUI.js';
 
 // ── DOM Refs ───────────────────────────────────────────────────
 const $ = (sel) => document.querySelector(sel);
@@ -106,17 +112,7 @@ initSearchManager({ sendMessage, updateSendButton });
 
 async function showEnowxModelList() {
   try {
-    const response = await fetch('/v1/models', { signal: AbortSignal.timeout(15000) });
-    if (!response.ok) {
-      throw new Error('Failed to load enowxai models.');
-    }
-
-    const data = await response.json();
-    const models = Array.isArray(data?.data)
-      ? data.data
-      : Array.isArray(data?.models)
-        ? data.models
-        : [];
+    const models = await fetchEnowxProviderModels();
 
     if (models.length === 0) {
       showToast('EnowxAI mode enabled, but no models were returned.', 'error');
@@ -129,17 +125,17 @@ async function showEnowxModelList() {
 
       models.forEach((model) => {
         const option = document.createElement('option');
-        option.value = model.id;
-        option.textContent = model.id;
+        option.value = model;
+        option.textContent = model;
         providerModelInput.appendChild(option);
       });
 
       const defaultModel = resolveModeModel('enowxai', '');
-      const nextValue = models.some((model) => model.id === previousValue)
-        ? previousValue
-        : models.some((model) => model.id === defaultModel)
-          ? defaultModel
-          : (models[0]?.id || '');
+      const nextValue = pickPreferredProviderModel({
+        models,
+        previousValue,
+        defaultModel,
+      });
       state.settings.model = nextValue;
       providerModelInput.value = nextValue;
     }
@@ -390,10 +386,64 @@ document.addEventListener('keydown', (e) => {
   handleModalTabTrap(e);
 });
 
+
 // ── Init ───────────────────────────────────────────────────────
 const savedTheme = localStorage.getItem('theme') || 'dark';
 document.documentElement.dataset.theme = savedTheme;
 themeToggle.textContent = savedTheme === 'light' ? '\u2600\uFE0F' : '\uD83C\uDF19';
+
+// Auth init
+const authUser = initAuthUI();
+
+// Rooms view — inject into DOM
+const roomsView = createRoomsView();
+const playgroundView = document.getElementById('view-playground');
+if (playgroundView) {
+  playgroundView.parentNode.insertBefore(roomsView, playgroundView);
+}
+initRoomsUI();
+
+function syncShellForView(viewName) {
+  const isRoomsView = viewName === 'rooms';
+
+  if (sidebar) sidebar.hidden = isRoomsView;
+  if (sidebarToggle) sidebarToggle.hidden = isRoomsView;
+
+  if (isRoomsView) {
+    closeSidebar();
+    if (sidebarBackdrop) sidebarBackdrop.hidden = true;
+    return;
+  }
+
+  if (sidebar) sidebar.hidden = false;
+  if (sidebarToggle) sidebarToggle.hidden = false;
+  syncSidebarBackdrop();
+}
+
+// Nav tab switching — include rooms
+document.querySelectorAll('.nav-tab').forEach((tab) => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.nav-tab').forEach((t) => t.classList.remove('active'));
+    tab.classList.add('active');
+    document.querySelectorAll('.view-panel').forEach((p) => { p.hidden = true; });
+    const viewId = `view-${tab.dataset.view}`;
+    const panel = document.getElementById(viewId);
+    if (panel) panel.hidden = false;
+    syncShellForView(tab.dataset.view);
+    if (tab.dataset.view === 'rooms' && isAuthenticated()) {
+      refreshRoomsList({ onOpenTeamRoom: openRoomChat, onOpenAgentRoom: openAgentRoomChat, onCloseRoom: closeRoomChat });
+    } else {
+      // Stop room polling and WebSocket when leaving Rooms tab
+      cleanupRooms();
+    }
+  });
+});
+
+// On login success — refresh rooms
+onLoginSuccess(() => {
+  refreshSidebar();
+  refreshRoomsList({ onOpenTeamRoom: openRoomChat, onOpenAgentRoom: openAgentRoomChat, onCloseRoom: closeRoomChat });
+});
 
 initShortcuts();
 populateTimezones();
@@ -402,7 +452,8 @@ applySettingsToUi();
 syncPlusMenuState();
 
 if (isMobileViewport()) sidebar.classList.add('collapsed');
-syncSidebarBackdrop();
+const activeViewTab = document.querySelector('.nav-tab.active');
+syncShellForView(activeViewTab?.dataset.view || 'chat');
 window.addEventListener('resize', syncSidebarBackdrop);
 
 const lastConvId = getActiveConversationId();

@@ -85,11 +85,11 @@ function handleShare() {
   } else {
     const htmlSnippet = buildShareHtml(conv);
     navigator.clipboard.writeText(htmlSnippet).then(() => {
-      alert('Share HTML copied to clipboard!');
+      showToast('Share HTML copied to clipboard', 'success');
     }).catch(() => {
       navigator.clipboard.writeText(encoded).then(() => {
-        alert('Share data copied to clipboard (base64).');
-      }).catch(() => { alert('Failed to copy share data.'); });
+        showToast('Share data copied to clipboard', 'success');
+      }).catch(() => { showToast('Failed to copy share data', 'error'); });
     });
   }
   closeModal(exportModal);

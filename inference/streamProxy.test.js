@@ -13,7 +13,22 @@ test('buildChatCompletionPayload forces streaming mode', () => {
   assert.equal(payload.stream, true);
   assert.equal(payload.max_tokens, 256);
   assert.equal(payload.temperature, 0.3);
-  assert.deepEqual(payload.messages, [{ role: 'user', content: 'hello' }]);
+  // System message is auto-injected if missing
+  assert.equal(payload.messages[0].role, 'system');
+  assert.equal(payload.messages[1].role, 'user');
+  assert.equal(payload.messages[1].content, 'hello');
+});
+
+test('buildChatCompletionPayload preserves existing system message', () => {
+  const payload = JSON.parse(buildChatCompletionPayload({
+    messages: [
+      { role: 'system', content: 'Custom system prompt' },
+      { role: 'user', content: 'hello' },
+    ],
+  }));
+
+  assert.equal(payload.messages.length, 2);
+  assert.equal(payload.messages[0].content, 'Custom system prompt');
 });
 
 test('buildChatCompletionPayload forwards chat template kwargs', () => {

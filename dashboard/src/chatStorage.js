@@ -2,15 +2,43 @@
  * Chat Storage & Export Module
  * localStorage persistence with IndexedDB fallback, debounced auto-save,
  * multi-conversation management, and Markdown/JSON/text export.
+ * Storage keys are scoped per user to prevent cross-user data leaks.
  */
 
-const STORAGE_KEY = 'tenrary_conversations';
-const ACTIVE_KEY = 'tenrary_active_conversation';
+let _userId = null;
+const STORAGE_KEY_BASE = 'tenrary_conversations';
+const ACTIVE_KEY_BASE = 'tenrary_active_conversation';
 const MAX_CONVERSATIONS = 50;
 const DEBOUNCE_MS = 500;
 const IDB_NAME = 'tenrary_chat_db';
 const IDB_STORE = 'conversations';
 const IDB_VERSION = 1;
+
+function storageKey() {
+  return _userId ? `${STORAGE_KEY_BASE}_${_userId}` : STORAGE_KEY_BASE;
+}
+function activeKey() {
+  return _userId ? `${ACTIVE_KEY_BASE}_${_userId}` : ACTIVE_KEY_BASE;
+}
+
+/**
+ * Set the current user ID for scoped storage.
+ * Call on login. Pass null on logout.
+ */
+export function setStorageUser(userId) {
+  _userId = userId;
+}
+
+/**
+ * Clear all conversation data for the current user scope.
+ * Call on logout to prevent cross-user data leaks.
+ */
+export function clearUserData() {
+  try { localStorage.removeItem(storageKey()); } catch { /* ignore */ }
+  try { localStorage.removeItem(activeKey()); } catch { /* ignore */ }
+  _idbFallback = false;
+  _idbReady = null;
+}
 
 // ── Helpers ────────────────────────────────────────────────────
 
@@ -93,7 +121,7 @@ const DANGEROUS_KEYS = new Set(['__proto__', 'constructor', 'toString', 'valueOf
 
 function readAllLocal() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(storageKey());
     if (!raw) return Object.create(null);
     const parsed = JSON.parse(raw);
     // H1 fix: filter prototype pollution keys and use null-prototype container
@@ -112,7 +140,7 @@ function readAllLocal() {
 function writeAllLocal(conversations) {
   try {
     const json = JSON.stringify(conversations);
-    localStorage.setItem(STORAGE_KEY, json);
+    localStorage.setItem(storageKey(), json);
     _idbFallback = false;
     return true;
   } catch (e) {
@@ -166,7 +194,7 @@ async function migrateToIDB(conversations) {
     await idbPut(c);
   }
   try {
-    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(storageKey());
   } catch { /* ignore */ }
 }
 
@@ -235,7 +263,7 @@ export async function deleteConversation(id) {
   await removeOne(id);
   const activeId = getActiveConversationId();
   if (activeId === id) {
-    try { localStorage.removeItem(ACTIVE_KEY); } catch { /* ignore */ }
+    try { localStorage.removeItem(activeKey()); } catch { /* ignore */ }
   }
 }
 
@@ -243,7 +271,7 @@ export async function deleteConversation(id) {
 
 export function getActiveConversationId() {
   try {
-    return localStorage.getItem(ACTIVE_KEY) ?? null;
+    return localStorage.getItem(activeKey()) ?? null;
   } catch {
     return null;
   }
@@ -252,9 +280,9 @@ export function getActiveConversationId() {
 export function setActiveConversationId(id) {
   try {
     if (id == null) {
-      localStorage.removeItem(ACTIVE_KEY);
+      localStorage.removeItem(activeKey());
     } else {
-      localStorage.setItem(ACTIVE_KEY, id);
+      localStorage.setItem(activeKey(), id);
     }
   } catch { /* ignore */ }
 }

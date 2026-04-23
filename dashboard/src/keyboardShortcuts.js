@@ -42,7 +42,7 @@ function comboFromEvent(e) {
   if (e.shiftKey) parts.push('shift');
   if (e.metaKey) parts.push('meta');
 
-  if (!MODIFIER_KEYS.has(e.key)) {
+  if (e.key && !MODIFIER_KEYS.has(e.key)) {
     let key = e.key.toLowerCase();
     // Normalize special keys
     if (key === ' ') key = 'space';
@@ -72,8 +72,8 @@ export function isInputFocused() {
  * Global keydown handler.
  */
 function handleKeyDown(e) {
-  // Ignore standalone modifier presses
-  if (MODIFIER_KEYS.has(e.key)) return;
+  // Ignore events with no key (dead keys, IME) or standalone modifier presses
+  if (!e.key || MODIFIER_KEYS.has(e.key)) return;
 
   const combo = comboFromEvent(e);
   const entry = shortcuts.get(combo);

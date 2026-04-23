@@ -4,7 +4,7 @@
  */
 
 import { state } from './appState.js';
-import { escapeHtml } from './utils.js';
+import { escapeHtml, showToast } from './utils.js';
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 const ALLOWED_DOC_TYPES = new Set([
@@ -27,18 +27,18 @@ export function handleFileAttach(input) {
 
   files.forEach((file) => {
     if (file.size > MAX_FILE_SIZE) {
-      alert(`File "${file.name}" exceeds the 10 MB limit.`);
+      showToast(`File "${file.name}" exceeds the 10 MB limit`, 'error');
       return;
     }
     if (isImageInput) {
       if (!file.type.startsWith('image/')) {
-        alert(`File "${file.name}" is not a valid image.`);
+        showToast(`File "${file.name}" is not a valid image`, 'error');
         return;
       }
     } else {
       const ext = '.' + file.name.split('.').pop().toLowerCase();
       if (!ALLOWED_DOC_TYPES.has(file.type) && !ALLOWED_DOC_EXTENSIONS.has(ext)) {
-        alert(`File "${file.name}" has an unsupported type.`);
+        showToast(`File "${file.name}" has an unsupported type`, 'error');
         return;
       }
     }
@@ -102,7 +102,7 @@ if (chatMain) {
     e.stopPropagation();
     chatMain.classList.remove('drag-over');
     Array.from(e.dataTransfer.files).forEach((file) => {
-      if (file.size > MAX_FILE_SIZE) { alert(`File "${file.name}" exceeds 10MB limit.`); return; }
+      if (file.size > MAX_FILE_SIZE) { showToast(`File "${file.name}" exceeds 10MB limit`, 'error'); return; }
       if (state.attachedFiles.some((f) => f.name === file.name)) return;
       state.attachedFiles.push(file);
     });

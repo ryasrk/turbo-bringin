@@ -1,0 +1,148 @@
+import { WebSocketServer } from 'ws';
+
+import { verifyAccessToken } from '../auth/auth.js';
+import { canAccessAgentRoom, findUserById, getAgentRoom } from '../db/database.js';
+
+const agentRoomWss = new WebSocketServer({ noServer: true, maxPayload: 128 * 1024 });
+const roomSockets = new Map();
+const roomUserSocketCounts = new Map();
+const DASHBOARD_ORIGIN = process.env.DASHBOARD_ORIGIN || '';
+const MAX_ROOM_SOCKETS_PER_USER = 3;
+
+function isAllowedDashboardOrigin(origin) {
+  if (!origin) return true;
+
+  if (DASHBOARD_ORIGIN) {
+    const allowedOrigins = DASHBOARD_ORIGIN
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean);
+    return allowedOrigins.includes(origin);
+  }
+
+  return /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin);
+}
+
+function wsSend(ws, payload) {
+  if (ws.readyState !== ws.OPEN) return;
+  try {
+    ws.send(JSON.stringify(payload));
+  } catch {
+    // Ignore broken sockets.
+  }
+}
+
+function addSocket(roomId, ws) {
+  const set = roomSockets.get(roomId) || new Set();
+  set.add(ws);
+  roomSockets.set(roomId, set);
+}
+
+function removeSocket(roomId, ws) {
+  const set = roomSockets.get(roomId);
+  if (!set) return;
+  set.delete(ws);
+  if (set.size === 0) {
+    roomSockets.delete(roomId);
+  }
+
+  const countKey = `${roomId}:${ws._agentRoomUserId || ''}`;
+  const count = roomUserSocketCounts.get(countKey) || 0;
+  if (count <= 1) {
+    roomUserSocketCounts.delete(countKey);
+  } else {
+    roomUserSocketCounts.set(countKey, count - 1);
+  }
+}
+
+export function broadcastAgentRoomEvent(roomId, type, payload = {}) {
+  const sockets = roomSockets.get(roomId);
+  if (!sockets || sockets.size === 0) return;
+
+  const message = JSON.stringify({ type, room_id: roomId, ...payload });
+  for (const ws of sockets) {
+    if (ws.readyState !== ws.OPEN) {
+      removeSocket(roomId, ws);
+      continue;
+    }
+    try {
+      ws.send(message);
+    } catch {
+      removeSocket(roomId, ws);
+    }
+  }
+}
+
+agentRoomWss.on('connection', (ws, req, client) => {
+  const roomId = client.roomId;
+  const countKey = `${roomId}:${client.user.id}`;
+  const currentCount = roomUserSocketCounts.get(countKey) || 0;
+  if (currentCount >= MAX_ROOM_SOCKETS_PER_USER) {
+    ws.close(1008, 'Too many Agent Room connections for this user.');
+    return;
+  }
+
+  ws._agentRoomUserId = client.user.id;
+  roomUserSocketCounts.set(countKey, currentCount + 1);
+  addSocket(roomId, ws);
+
+  wsSend(ws, {
+    type: 'agent_room:connected',
+    room_id: roomId,
+    user: {
+      id: client.user.id,
+      username: client.user.username,
+      display_name: client.user.display_name,
+    },
+  });
+
+  const cleanup = () => removeSocket(roomId, ws);
+  ws.on('close', cleanup);
+  ws.on('error', cleanup);
+});
+
+export function handleAgentRoomUpgrade(req, socket, head) {
+  const url = new URL(req.url, 'http://localhost');
+  const roomId = url.searchParams.get('room_id') || '';
+  const token = url.searchParams.get('token') || '';
+  const origin = req.headers.origin || '';
+
+  if (!roomId || !token) {
+    socket.write('HTTP/1.1 400 Bad Request\r\n\r\n');
+    socket.destroy();
+    return false;
+  }
+
+  if (!isAllowedDashboardOrigin(origin)) {
+    socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+    socket.destroy();
+    return false;
+  }
+
+  const payload = verifyAccessToken(token);
+  if (!payload) {
+    socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+    socket.destroy();
+    return false;
+  }
+
+  const user = findUserById(payload.sub);
+  if (!user) {
+    socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+    socket.destroy();
+    return false;
+  }
+
+  const room = getAgentRoom(roomId);
+  if (!room || !canAccessAgentRoom(room, user.id)) {
+    socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+    socket.destroy();
+    return false;
+  }
+
+  agentRoomWss.handleUpgrade(req, socket, head, (ws) => {
+    agentRoomWss.emit('connection', ws, req, { user, roomId });
+  });
+
+  return true;
+}

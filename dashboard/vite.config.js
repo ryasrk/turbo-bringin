@@ -24,6 +24,10 @@ export default defineConfig(({ mode }) => {
           ws: true,
           rewrite: (path) => path.replace(/^\/manager/, ''),
         },
+        '/api': {
+          target: `http://localhost:${controlPort}`,
+          changeOrigin: true,
+        },
       },
     },
   }

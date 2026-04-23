@@ -5,12 +5,35 @@
 let _conversations = new Map();
 let _activeId = null;
 let _folders = new Set(['General']);
+let _userId = null;
 
-const FOLDERS_KEY = 'tenrary_folders';
+const FOLDERS_KEY_BASE = 'tenrary_folders';
+
+function foldersKey() {
+  return _userId ? `${FOLDERS_KEY_BASE}_${_userId}` : FOLDERS_KEY_BASE;
+}
+
+/**
+ * Set the current user ID for scoped storage.
+ */
+export function setConversationUser(userId) {
+  _userId = userId;
+}
+
+/**
+ * Clear all in-memory conversation state.
+ * Call on logout to prevent cross-user data leaks.
+ */
+export function clearAllConversations() {
+  _conversations.clear();
+  _activeId = null;
+  _folders = new Set(['General']);
+  try { localStorage.removeItem(foldersKey()); } catch { /* ignore */ }
+}
 
 function loadFolders() {
   try {
-    const raw = localStorage.getItem(FOLDERS_KEY);
+    const raw = localStorage.getItem(foldersKey());
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) {
@@ -22,7 +45,7 @@ function loadFolders() {
 
 function saveFolders() {
   try {
-    localStorage.setItem(FOLDERS_KEY, JSON.stringify([..._folders]));
+    localStorage.setItem(foldersKey(), JSON.stringify([..._folders]));
   } catch { /* ignore */ }
 }
 
@@ -383,7 +406,7 @@ export function renderConversationList(conversations, activeId) {
 
 // ── Time formatting ────────────────────────────────────────────
 
-function formatTimeAgo(timestamp) {
+export function formatTimeAgo(timestamp) {
   const diff = now() - timestamp;
   const seconds = Math.floor(diff / 1000);
   const minutes = Math.floor(seconds / 60);

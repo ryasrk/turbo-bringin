@@ -4,6 +4,8 @@
  * Exposes a control API on :3002 and proxies inference to the active llama-server on :18080.
  */
 
+import './loadEnv.js';
+
 import { spawn, execFile } from 'child_process';
 import { createServer, request as httpRequest } from 'http';
 import path from 'path';
@@ -12,7 +14,9 @@ import { createClient } from 'redis';
 import { WebSocketServer } from 'ws';
 
 import { buildCacheKey, CACHE_TTLS, RequestCache, shouldCacheRequest } from './requestCache.js';
+import { handleAgentRoomUpgrade } from './agentRoom/wsBridge.js';
 import { buildChatCompletionPayload, parseSseLine, splitSseLines } from './streamProxy.js';
+import { routeApiRequest } from './routes/apiRouter.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_DIR = path.resolve(__dirname, '..');
@@ -28,7 +32,7 @@ const STREAM_REQUEST_COOLDOWN_MS = 250;
 const UPSTREAM_REQUEST_TIMEOUT_MS = 45_000;
 const MANUAL_PARALLEL_SLOTS = parseInt(process.env.PARALLEL_SLOTS, 10) || 0;
 
-const DASHBOARD_ORIGIN = process.env.DASHBOARD_ORIGIN || 'http://localhost:3000';
+const DASHBOARD_ORIGIN = process.env.DASHBOARD_ORIGIN || '';
 const CONTROL_API_KEY = process.env.CONTROL_API_KEY || '';
 const ENOWXAI_BASE_URL = process.env.ENOWXAI_BASE_URL || '';
 const ENOWXAI_API_KEY = process.env.ENOWXAI_API_KEY || '';
@@ -66,6 +70,30 @@ const MODES = {
 
 let currentMode = null;
 let serverProcess = null;
+
+function getDashboardOrigins() {
+  if (DASHBOARD_ORIGIN) {
+    return DASHBOARD_ORIGIN
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean);
+  }
+
+  return [
+    'http://localhost:3000',
+    'http://localhost:3001',
+    'http://127.0.0.1:3000',
+    'http://127.0.0.1:3001',
+  ];
+}
+
+function getCorsOrigin(requestOrigin) {
+  const allowedOrigins = getDashboardOrigins();
+  if (requestOrigin && allowedOrigins.includes(requestOrigin)) {
+    return requestOrigin;
+  }
+  return allowedOrigins[0] || 'http://localhost:3000';
+}
 let isStarting = false;
 let activeWebSocketConnections = 0;
 let maxParallelSlots = 1;
@@ -378,6 +406,11 @@ function checkInferenceHealth() {
 function attachWebSocketBridge(server) {
   server.on('upgrade', (req, socket, head) => {
     const url = new URL(req.url, `http://localhost:${CONTROL_PORT}`);
+    if (url.pathname === '/ws/agent-room') {
+      handleAgentRoomUpgrade(req, socket, head);
+      return;
+    }
+
     if (url.pathname !== '/ws/chat') {
       socket.destroy();
       return;
@@ -786,8 +819,8 @@ function isAuthorizedMutation(req) {
 
 // ── Control API Server ─────────────────────────────────────────
 const controlServer = createServer(async (req, res) => {
-  res.setHeader('Access-Control-Allow-Origin', DASHBOARD_ORIGIN);
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Origin', getCorsOrigin(req.headers.origin || ''));
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
   if (req.method === 'OPTIONS') {
@@ -817,7 +850,20 @@ const controlServer = createServer(async (req, res) => {
     }
 
     try {
-      const rawBody = await readRequestBody(req);
+      let rawBody = await readRequestBody(req);
+
+      // EnowxAI and some providers reject payloads without a system message.
+      // Inject a default one when missing and we're in provider mode.
+      if (isRemoteProviderMode(currentMode) && url.pathname === '/v1/chat/completions') {
+        try {
+          const parsed = JSON.parse(rawBody);
+          if (Array.isArray(parsed.messages) && !parsed.messages.some((m) => m.role === 'system')) {
+            parsed.messages.unshift({ role: 'system', content: 'You are a helpful assistant.' });
+            rawBody = JSON.stringify(parsed);
+          }
+        } catch { /* leave rawBody as-is if not valid JSON */ }
+      }
+
       if (await maybeServeCachedProxyRequest(url.pathname, { method: 'POST', body: rawBody }, res)) {
         return;
       }
@@ -949,7 +995,7 @@ const controlServer = createServer(async (req, res) => {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
         'Connection': 'keep-alive',
-        'Access-Control-Allow-Origin': DASHBOARD_ORIGIN,
+        'Access-Control-Allow-Origin': getCorsOrigin(req.headers.origin || ''),
       });
 
       const entry = { type: 'sse', res, params, disconnected: false, cleanupRef: null, inFlight: false };
@@ -985,6 +1031,20 @@ const controlServer = createServer(async (req, res) => {
     return;
   }
 
+  // ── API Routes (auth, conversations, rooms, sharing) ─────────
+  if (url.pathname.startsWith('/api/')) {
+    try {
+      const handled = await routeApiRequest(url, req, res);
+      if (handled) return;
+    } catch (err) {
+      if (!res.headersSent) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Internal server error' }));
+      }
+      return;
+    }
+  }
+
   res.writeHead(404, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify({ error: 'Not found' }));
 });
@@ -1010,8 +1070,8 @@ controlServer.listen(CONTROL_PORT, () => {
   log(``);
 });
 
-// Start with turboquant by default
-const startMode = process.argv[2] || 'turboquant';
+// Start with enowxai by default (agent rooms always use enowxai provider)
+const startMode = process.argv[2] || 'enowxai';
 switchMode(startMode).catch((err) => {
   log(`Failed to start: ${err.message}`);
   process.exit(1);

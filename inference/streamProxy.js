@@ -8,8 +8,16 @@ export function buildChatCompletionPayload({
   reasoning_effort,
 }) {
   const MAX_TOKENS_CAP = 8192;
+  const msgArray = Array.isArray(messages) ? messages : [];
+
+  // Some providers (e.g. enowxai) reject payloads without a system message.
+  const hasSystem = msgArray.some((m) => m.role === 'system');
+  const safeMessages = hasSystem
+    ? msgArray
+    : [{ role: 'system', content: 'You are a helpful assistant.' }, ...msgArray];
+
   const payload = {
-    messages: Array.isArray(messages) ? messages : [],
+    messages: safeMessages,
     max_tokens: Number.isFinite(max_tokens) ? Math.min(max_tokens, MAX_TOKENS_CAP) : 1024,
     temperature: Number.isFinite(temperature) ? temperature : 0.7,
     stream: true,
