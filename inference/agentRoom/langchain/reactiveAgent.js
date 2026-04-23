@@ -258,6 +258,17 @@ function normalizeResponseContent(content) {
   return String(content || '');
 }
 
+/**
+ * Strip self-mentions from an agent's response.
+ * Small local models sometimes generate "@planner" when they ARE planner.
+ * This removes leading self-mentions and cleans up the text.
+ */
+export function stripSelfMentions(text, agentName) {
+  if (!text || !agentName) return text;
+  const pattern = new RegExp(`@${agentName}\\b[,:]?\\s*`, 'gi');
+  return text.replace(pattern, '').trim();
+}
+
 export function getToolCallingMode(agent) {
   const configuredMode = String(agent?.provider_config?.tool_calling_mode || '').trim().toLowerCase();
   if (configuredMode === 'native' || configuredMode === 'text' || configuredMode === 'auto') {
@@ -516,7 +527,8 @@ export async function runSimpleAgentTurn({ agent, roomContext, input, conversati
 
   try {
     const result = await routerModel.invoke(messages);
-    const content = normalizeResponseContent(result.content);
+    const rawContent = normalizeResponseContent(result.content);
+    const content = stripSelfMentions(rawContent, agent.name);
     const usage = result.additional_kwargs?.usage || {};
 
     console.log(`[${agent.name}] xa turn — ${usage.total_tokens || 0} tokens (router model)`);
@@ -594,7 +606,8 @@ ${progressContext}`;
 
   try {
     const result = await routerModel.invoke(messages);
-    const content = normalizeResponseContent(result.content);
+    const rawContent = normalizeResponseContent(result.content);
+    const content = stripSelfMentions(rawContent, agent.name);
     const usage = result.additional_kwargs?.usage || {};
 
     console.log(`[${agent.name}] xa progress check — ${usage.total_tokens || 0} tokens`);
@@ -1072,6 +1085,9 @@ export async function runReactiveAgentTurn({
   if (!finalMessage) {
     finalMessage = `${agent.name} completed ${toolResults.length} action(s).`;
   }
+
+  // Strip self-mentions — small models sometimes generate @planner when they ARE planner
+  finalMessage = stripSelfMentions(finalMessage, agent.name);
 
   // ── Confidence Scoring ──────────────────────────────────────
   // Heuristic confidence based on tool success rate, reflection, and completeness.

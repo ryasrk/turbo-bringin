@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { extractToolCalls, getAllowedCollaborationToolNames, getRoleOperatingGuidance, getToolCallingMode, isSimpleQuery, isProgressQuery, shouldAgentRespond } from './reactiveAgent.js';
+import { extractToolCalls, getAllowedCollaborationToolNames, getRoleOperatingGuidance, getToolCallingMode, isSimpleQuery, isProgressQuery, stripSelfMentions, shouldAgentRespond } from './reactiveAgent.js';
 
 const agents = [
   { name: 'planner', role: 'Breaks work into steps and coordinates implementation.', system_prompt: '' },
@@ -262,4 +262,43 @@ test('isProgressQuery rejects non-progress messages', () => {
   assert.equal(isProgressQuery('create a file'), false);
   assert.equal(isProgressQuery('thanks!'), false);
   assert.equal(isProgressQuery('@coder fix the bug'), false);
+});
+
+// ── stripSelfMentions ─────────────────────────────────────────
+test('stripSelfMentions removes self @mentions from responses', () => {
+  // Leading self-mention with comma
+  assert.equal(
+    stripSelfMentions('@planner, saya akan menyelesaikan tugas', 'planner'),
+    'saya akan menyelesaikan tugas',
+  );
+  // Leading self-mention with colon
+  assert.equal(
+    stripSelfMentions('@planner: here is the plan', 'planner'),
+    'here is the plan',
+  );
+  // Self-mention in middle of text
+  assert.equal(
+    stripSelfMentions('Saya @planner akan mengerjakan ini', 'planner'),
+    'Saya akan mengerjakan ini',
+  );
+  // Does NOT strip other agent mentions
+  assert.equal(
+    stripSelfMentions('@coder please fix this', 'planner'),
+    '@coder please fix this',
+  );
+  // Multiple self-mentions
+  assert.equal(
+    stripSelfMentions('@planner, @planner will handle this', 'planner'),
+    'will handle this',
+  );
+  // No self-mention — unchanged
+  assert.equal(
+    stripSelfMentions('Everything looks good', 'planner'),
+    'Everything looks good',
+  );
+  // Case insensitive
+  assert.equal(
+    stripSelfMentions('@Planner, here is the plan', 'planner'),
+    'here is the plan',
+  );
 });
