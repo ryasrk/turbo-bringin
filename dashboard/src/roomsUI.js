@@ -382,9 +382,14 @@ export function createRoomsView() {
           <input type="hidden" id="agent-config-mode" value="add" />
           <input type="hidden" id="agent-config-original-name" value="" />
 
-          <div class="agent-config-columns">
-            <div class="agent-config-col">
-              <h4 class="agent-config-section-title">Identity</h4>
+          <!-- Tab navigation -->
+          <div class="agent-config-tabs">
+            <button type="button" class="agent-config-tab active" data-tab="identity">Identity</button>
+            <button type="button" class="agent-config-tab" data-tab="provider">Model & Provider</button>
+          </div>
+
+          <!-- Tab: Identity -->
+          <div class="agent-config-tab-panel active" data-tab-panel="identity">
               <div class="form-group">
                 <label for="agent-name-input">Bot Name</label>
                 <input type="text" id="agent-name-input" placeholder="e.g. researcher" required minlength="2" maxlength="32" pattern="[a-z][a-z0-9_-]+" title="Lowercase letters, numbers, underscores, hyphens. Must start with a letter." />
@@ -396,7 +401,7 @@ export function createRoomsView() {
               </div>
               <div class="form-group">
                 <label for="agent-prompt-input">System Prompt</label>
-                <textarea id="agent-prompt-input" rows="3" placeholder="Custom instructions for this bot's persona and behavior..." maxlength="4000"></textarea>
+                <textarea id="agent-prompt-input" rows="5" placeholder="Custom instructions for this bot's persona and behavior..." maxlength="4000"></textarea>
               </div>
               <div class="form-group">
                 <label>Tools</label>
@@ -407,10 +412,10 @@ export function createRoomsView() {
                   <label class="checkbox-label"><input type="checkbox" name="agent-tool" value="update_file" /> update_file</label>
                 </div>
               </div>
-            </div>
+          </div>
 
-            <div class="agent-config-col">
-              <h4 class="agent-config-section-title">Model & Provider</h4>
+          <!-- Tab: Model & Provider -->
+          <div class="agent-config-tab-panel" data-tab-panel="provider">
               <div class="form-group">
                 <label for="agent-tier-input">Fallback Tier</label>
                 <select id="agent-tier-input">
@@ -458,7 +463,6 @@ export function createRoomsView() {
                 <label for="agent-temperature-input">Temperature</label>
                 <input type="number" id="agent-temperature-input" min="0" max="2" step="0.05" placeholder="0.3" />
               </div>
-            </div>
           </div>
 
           <div class="modal-actions">

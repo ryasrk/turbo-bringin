@@ -173,6 +173,24 @@ function collectRoomProviderConfig(panel) {
   return config;
 }
 
+// ── Tab Switching ──────────────────────────────────────────────
+
+function initAgentConfigTabs(panel) {
+  const tabs = panel?.querySelectorAll('.agent-config-tab');
+  const panels = panel?.querySelectorAll('.agent-config-tab-panel');
+  if (!tabs || !panels) return;
+
+  tabs.forEach((tab) => {
+    tab.addEventListener('click', () => {
+      const target = tab.dataset.tab;
+      tabs.forEach((t) => t.classList.toggle('active', t.dataset.tab === target));
+      panels.forEach((p) => p.classList.toggle('active', p.dataset.tabPanel === target));
+    });
+  });
+}
+
+let _tabsInitialized = false;
+
 // ── Modal Open / Close / Submit ────────────────────────────────
 
 /**
@@ -244,6 +262,14 @@ export async function openAgentConfigModal(mode = 'add', agent = null, renderAge
     if (providerInput) providerInput.value = 'tier';
     updateRoomProviderFields(panel, 'tier');
   }
+
+  // Initialize tabs once, reset to first tab on every open
+  if (!_tabsInitialized) {
+    initAgentConfigTabs(panel);
+    _tabsInitialized = true;
+  }
+  const firstTab = panel.querySelector('.agent-config-tab[data-tab="identity"]');
+  if (firstTab) firstTab.click();
 
   modal.style.display = 'flex';
 }
