@@ -251,6 +251,40 @@ const stmts = {
       memory_text = excluded.memory_text,
       updated_at = unixepoch()
   `),
+  listAgentRoomMemories: db.prepare(`
+    SELECT agent_name, memory_text, updated_at
+    FROM agent_room_memories
+    WHERE room_id = ?
+    ORDER BY updated_at DESC
+  `),
+  clearAgentRoomMemory: db.prepare(`
+    DELETE FROM agent_room_memories
+    WHERE room_id = ? AND agent_name = ?
+  `),
+
+  // Agent room token usage
+  saveAgentRoomTokenUsage: db.prepare(`
+    INSERT INTO agent_room_token_usage (id, room_id, agent_name, prompt_tokens, completion_tokens, total_tokens, model, provider)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `),
+  getAgentRoomTokenSummary: db.prepare(`
+    SELECT agent_name,
+           SUM(prompt_tokens) AS prompt_tokens,
+           SUM(completion_tokens) AS completion_tokens,
+           SUM(total_tokens) AS total_tokens,
+           COUNT(*) AS call_count
+    FROM agent_room_token_usage
+    WHERE room_id = ?
+    GROUP BY agent_name
+    ORDER BY total_tokens DESC
+  `),
+  getAgentRoomTokenHistory: db.prepare(`
+    SELECT id, agent_name, prompt_tokens, completion_tokens, total_tokens, model, provider, created_at
+    FROM agent_room_token_usage
+    WHERE room_id = ?
+    ORDER BY created_at DESC
+    LIMIT ?
+  `),
 
   // Agent room logs
   saveAgentRoomLog: db.prepare(`
@@ -624,6 +658,38 @@ export function saveAgentRoomMemory(roomId, agentName, memoryText) {
   const value = String(memoryText || '').slice(0, 4000);
   stmts.saveAgentRoomMemory.run(roomId, agentName, value);
   touchAgentRoom(roomId);
+}
+
+export function listAgentRoomMemories(roomId) {
+  return stmts.listAgentRoomMemories.all(roomId);
+}
+
+export function clearAgentRoomMemory(roomId, agentName) {
+  stmts.clearAgentRoomMemory.run(roomId, agentName);
+  touchAgentRoom(roomId);
+}
+
+export function saveAgentRoomTokenUsage(roomId, agentName, usage = {}, model = '', provider = '') {
+  const id = uuid();
+  stmts.saveAgentRoomTokenUsage.run(
+    id,
+    roomId,
+    agentName,
+    Number(usage.prompt_tokens) || 0,
+    Number(usage.completion_tokens) || 0,
+    Number(usage.total_tokens) || 0,
+    String(model || ''),
+    String(provider || ''),
+  );
+  return id;
+}
+
+export function getAgentRoomTokenSummary(roomId) {
+  return stmts.getAgentRoomTokenSummary.all(roomId);
+}
+
+export function getAgentRoomTokenHistory(roomId, limit = 50) {
+  return stmts.getAgentRoomTokenHistory.all(roomId, limit);
 }
 
 export function saveAgentRoomLog(roomId, agentName, level, message, meta = {}) {

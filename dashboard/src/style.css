@@ -5441,3 +5441,441 @@ details[open] > .profile-password-toggle::before { content: '▾ '; }
     grid-template-rows: minmax(220px, auto) minmax(220px, auto);
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   Phase 3 — Agent Room Enhancements
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── 1. Agent Typing Indicator ─────────────────────────────────── */
+.agent-typing-indicator {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px 12px;
+  min-height: 0;
+  transition: min-height 0.2s ease;
+}
+.agent-typing-indicator:empty {
+  padding: 0;
+}
+.agent-typing-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg-secondary));
+  border: 1px solid color-mix(in srgb, var(--accent) 20%, var(--border));
+  font-size: 12px;
+  color: var(--text-secondary);
+  animation: typing-fade-in 0.25s ease;
+}
+@keyframes typing-fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.agent-typing-chip .typing-agent-name {
+  font-weight: 600;
+  color: var(--accent);
+}
+.typing-dots {
+  display: inline-flex;
+  gap: 2px;
+}
+.typing-dots span {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: typing-bounce 1.2s infinite ease-in-out;
+}
+.typing-dots span:nth-child(2) { animation-delay: 0.15s; }
+.typing-dots span:nth-child(3) { animation-delay: 0.3s; }
+@keyframes typing-bounce {
+  0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
+  30%           { opacity: 1;   transform: translateY(-3px); }
+}
+
+/* ── 2. Agent Handoff Visualization ────────────────────────────── */
+.handoff-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 8px 0;
+}
+.handoff-timeline-empty {
+  text-align: center;
+  padding: 16px 8px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-style: italic;
+}
+.handoff-event {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 10px;
+  position: relative;
+  animation: handoff-slide-in 0.3s ease;
+}
+@keyframes handoff-slide-in {
+  from { opacity: 0; transform: translateX(-8px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.handoff-event::before {
+  content: '';
+  position: absolute;
+  left: 20px;
+  top: 28px;
+  bottom: -8px;
+  width: 2px;
+  background: color-mix(in srgb, var(--accent) 25%, var(--border));
+}
+.handoff-event:last-child::before {
+  display: none;
+}
+.handoff-node {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 18%, var(--bg-secondary));
+  border: 2px solid var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--accent);
+  z-index: 1;
+}
+.handoff-body {
+  flex: 1;
+  min-width: 0;
+}
+.handoff-agents {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.handoff-agents .handoff-arrow {
+  color: var(--text-tertiary);
+  margin: 0 4px;
+}
+.handoff-content {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+.handoff-time {
+  font-size: 10px;
+  color: var(--text-tertiary);
+  margin-top: 2px;
+}
+
+/* ── 3. Agent Memory Panel ─────────────────────────────────────── */
+.agent-memory-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 0;
+}
+.agent-memory-list-empty {
+  text-align: center;
+  padding: 16px 8px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-style: italic;
+}
+.agent-memory-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  transition: border-color 0.15s ease;
+}
+.agent-memory-card:hover {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+}
+.agent-memory-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.agent-memory-card-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+}
+.agent-memory-card-actions {
+  display: flex;
+  gap: 4px;
+}
+.agent-memory-card-actions button {
+  padding: 2px 6px;
+  font-size: 10px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.agent-memory-card-actions button:hover {
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg-primary));
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+.agent-memory-card-actions .agent-memory-clear:hover {
+  background: color-mix(in srgb, var(--danger, #e53e3e) 10%, var(--bg-primary));
+  border-color: var(--danger, #e53e3e);
+  color: var(--danger, #e53e3e);
+}
+.agent-memory-content {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 120px;
+  overflow-y: auto;
+}
+.agent-memory-textarea {
+  width: 100%;
+  min-height: 60px;
+  padding: 6px 8px;
+  font-size: 11px;
+  font-family: var(--font-mono, 'JetBrains Mono', monospace);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  resize: vertical;
+}
+.agent-memory-textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+/* ── 4. Orchestration Config ───────────────────────────────────── */
+.orch-config {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 0;
+}
+.orch-config-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.orch-config-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.orch-config-select {
+  padding: 6px 10px;
+  font-size: 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+.orch-config-select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+.orch-config-slider-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.orch-config-slider {
+  flex: 1;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+  outline: none;
+}
+.orch-config-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+  border: 2px solid var(--bg-primary);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+.orch-config-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+  border: 2px solid var(--bg-primary);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+.orch-config-slider-value {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  min-width: 16px;
+  text-align: center;
+}
+.orch-config-hint {
+  font-size: 10px;
+  color: var(--text-tertiary);
+  font-style: italic;
+}
+
+/* ── 5. Token Usage Panel ──────────────────────────────────────── */
+.token-usage-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 0;
+}
+.token-usage-panel-empty {
+  text-align: center;
+  padding: 16px 8px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-style: italic;
+}
+.token-usage-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.token-usage-agent-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.token-usage-agent-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+}
+.token-usage-agent-name {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.token-usage-agent-total {
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.token-usage-bar-track {
+  height: 6px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--border) 60%, var(--bg-secondary));
+  overflow: hidden;
+  display: flex;
+}
+.token-usage-bar-prompt {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.3s ease;
+}
+.token-usage-bar-completion {
+  height: 100%;
+  background: color-mix(in srgb, var(--accent) 50%, var(--bg-secondary));
+  transition: width 0.3s ease;
+}
+.token-usage-legend {
+  display: flex;
+  gap: 12px;
+  font-size: 10px;
+  color: var(--text-tertiary);
+  padding-top: 4px;
+}
+.token-usage-legend-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+.token-usage-legend-dot.prompt {
+  background: var(--accent);
+}
+.token-usage-legend-dot.completion {
+  background: color-mix(in srgb, var(--accent) 50%, var(--bg-secondary));
+}
+.token-usage-total-row {
+  display: flex;
+  justify-content: space-between;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  font-weight: 600;
+}
+.token-usage-total-label {
+  color: var(--text-secondary);
+}
+.token-usage-total-value {
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+.token-usage-history {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+.token-usage-history-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 2px;
+}
+.token-usage-history-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 10px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  background: var(--bg-secondary);
+}
+.token-usage-history-agent {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.token-usage-history-tokens {
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.token-usage-history-time {
+  color: var(--text-tertiary);
+}
+
+/* ── Phase 3 section headers in AI page ────────────────────────── */
+.room-ai-section-header {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 8px 0 4px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}

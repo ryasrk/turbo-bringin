@@ -9,6 +9,7 @@ import {
   saveAgentRoomLog,
   saveAgentRoomMemory,
   saveAgentRoomMessage,
+  saveAgentRoomTokenUsage,
   touchAgentRoom,
   updateAgentRoomAgentStatus,
 } from '../../db/database.js';
@@ -458,6 +459,16 @@ export class LangChainAgentRoomOrchestrator extends EventEmitter {
           agent_name: agent.name,
           tools: toolProgress,
           artifacts: fileArtifacts,
+          timestamp: nowUnix(),
+        });
+      }
+
+      // Track token usage
+      if (result.usage && result.usage.total_tokens > 0) {
+        saveAgentRoomTokenUsage(roomId, agent.name, result.usage, result.usage.model || '', result.usage.provider || '');
+        this.emitRoomEvent(roomId, 'agent_room:token_usage', {
+          agent_name: agent.name,
+          usage: result.usage,
           timestamp: nowUnix(),
         });
       }

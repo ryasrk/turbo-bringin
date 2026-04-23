@@ -195,6 +195,21 @@ CREATE TABLE IF NOT EXISTS agent_room_file_reviews (
 
 CREATE INDEX IF NOT EXISTS idx_agent_room_file_reviews_room_id ON agent_room_file_reviews(room_id);
 
+CREATE TABLE IF NOT EXISTS agent_room_token_usage (
+    id            TEXT PRIMARY KEY,
+    room_id       TEXT NOT NULL REFERENCES agent_rooms(id) ON DELETE CASCADE,
+    agent_name    TEXT NOT NULL,
+    prompt_tokens INTEGER DEFAULT 0,
+    completion_tokens INTEGER DEFAULT 0,
+    total_tokens  INTEGER DEFAULT 0,
+    model         TEXT DEFAULT '',
+    provider      TEXT DEFAULT '',
+    created_at    INTEGER DEFAULT (unixepoch())
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_room_token_usage_room_id ON agent_room_token_usage(room_id);
+CREATE INDEX IF NOT EXISTS idx_agent_room_token_usage_agent   ON agent_room_token_usage(room_id, agent_name);
+
 -- ── Shared Chats ───────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS shared_chats (
     id              TEXT PRIMARY KEY,

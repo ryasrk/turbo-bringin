@@ -41,6 +41,8 @@ export const rs = {
   agentRoomFileAuthors: new Map(),
   agentRoomConnectionState: 'idle',
   agentRoomReconnectTimer: null,
+  agentRoomOrchestrationMode: 'reactive',
+  agentRoomAutonomyLevel: 2,
   sidebarCollapsed: false,
   seenMessageIds: new Set(),
 };

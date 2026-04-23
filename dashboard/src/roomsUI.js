@@ -31,6 +31,11 @@ import {
   showAgentSidebar, toggleAgentSidebar, handleArtifactsClick
 } from './agentWorkspace.js';
 import { connectAgentRoomSocket, closeAgentSocket } from './agentSocket.js';
+import { loadAgentMemories, renderAgentMemories, saveAgentMemory, clearAgentMemoryAction } from './agentMemoryPanel.js';
+import { renderOrchestrationConfig, handleOrchestrationModeChange, handleAutonomyLevelChange } from './agentOrchestrationConfig.js';
+import { loadTokenUsage } from './agentTokenUsage.js';
+import { resetHandoffTimeline, renderHandoffTimeline, extractHandoffsFromMessage } from './agentHandoffViz.js';
+import { clearAllTypingIndicators } from './agentTypingIndicator.js';
 
 // ── Rooms Panel (sidebar-like list) ────────────────────────────
 
@@ -96,6 +101,7 @@ export function createRoomsView() {
             </div>
           </div>
           <div class="room-messages" id="room-messages" role="log" aria-live="polite" aria-label="Chat messages"></div>
+          <div class="agent-typing-indicator" id="agent-typing-indicator" hidden aria-live="polite" aria-label="Agent activity"></div>
           <div class="room-composer">
             <div id="room-mention-menu" class="room-mention-menu" hidden role="listbox" aria-label="Mention suggestions"></div>
             <div class="room-composer-main">
@@ -123,6 +129,15 @@ export function createRoomsView() {
               </div>
             </div>
             <div id="room-agent-progress" class="agent-room-progress" role="log" aria-live="polite"></div>
+          </section>
+          <section class="agent-room-panel" role="region" aria-label="Handoff timeline">
+            <div class="agent-room-panel-header">
+              <div>
+                <h4>Handoff Flow</h4>
+                <p>Agent-to-agent delegation timeline.</p>
+              </div>
+            </div>
+            <div id="agent-room-handoff-viz" class="agent-room-handoff-viz"></div>
           </section>
           <section class="agent-room-panel" role="region" aria-label="Activity log">
             <div class="agent-room-panel-header">
@@ -186,6 +201,36 @@ export function createRoomsView() {
             <textarea id="agent-room-task-details" rows="3" maxlength="4000" placeholder="Acceptance criteria, context, or constraints (optional)"></textarea>
           </form>
           <div id="agent-room-task-list" class="agent-task-list"></div>
+        </section>
+        <section class="room-ai-panel room-ai-orchestration" aria-label="Orchestration settings">
+          <div class="room-ai-panel-header">
+            <div>
+              <div class="room-note-eyebrow">Orchestration</div>
+              <div class="room-note-title">Mode & Autonomy</div>
+              <div class="room-note-body">Control how agents coordinate, react, and self-organize.</div>
+            </div>
+          </div>
+          <div id="agent-room-orchestration-config"></div>
+        </section>
+        <section class="room-ai-panel room-ai-token-usage" aria-label="Token usage">
+          <div class="room-ai-panel-header">
+            <div>
+              <div class="room-note-eyebrow">Cost Tracking</div>
+              <div class="room-note-title">Token Usage</div>
+              <div class="room-note-body">Per-agent token consumption and cumulative totals.</div>
+            </div>
+          </div>
+          <div id="agent-room-token-usage"></div>
+        </section>
+        <section class="room-ai-panel room-ai-memory" aria-label="Agent memories">
+          <div class="room-ai-panel-header">
+            <div>
+              <div class="room-note-eyebrow">Agent State</div>
+              <div class="room-note-title">Private Memories</div>
+              <div class="room-note-body">Each agent's private memory — what it remembers between turns.</div>
+            </div>
+          </div>
+          <div id="agent-room-memory-list"></div>
         </section>
         <div class="room-chat-bots room-ai-bots" id="room-ai-bots" role="group" aria-label="AI agents in this room"></div>
       </div>
@@ -686,6 +731,29 @@ export function initRoomsUI() {
     downloadFileBtn.addEventListener('click', () => downloadSelectedAgentFile());
   }
 
+  // ── Orchestration config event listeners ──────────────────────
+  rs.panel.addEventListener('change', (e) => {
+    if (e.target.id === 'orch-mode-select') {
+      handleOrchestrationModeChange(e.target.value);
+    }
+    if (e.target.id === 'orch-autonomy-slider') {
+      handleAutonomyLevelChange(e.target.value);
+    }
+  });
+
+  // ── Memory panel event delegation ─────────────────────────────
+  rs.panel.addEventListener('click', (e) => {
+    const saveBtn = e.target.closest('.agent-memory-save');
+    if (saveBtn) {
+      saveAgentMemory(saveBtn.dataset.agentName);
+      return;
+    }
+    const clearBtn = e.target.closest('.agent-memory-clear');
+    if (clearBtn) {
+      clearAgentMemoryAction(clearBtn.dataset.agentName);
+    }
+  });
+
   rs.panel.addEventListener('click', async (e) => {
     const mentionBtn = e.target.closest('[data-agent-mention]');
     if (mentionBtn && rs.currentRoomMode === 'agent') {
@@ -933,7 +1001,11 @@ export async function openAgentRoomChat(projectRoomId) {
     deleteBtn.hidden = !(user && data.room?.owner_id === user.id);
 
     rs.agentRoomLogs = data.logs || [];
+    rs.agentRoomOrchestrationMode = data.room?.orchestration_mode || 'reactive';
+    rs.agentRoomAutonomyLevel = data.room?.autonomy_level ?? 2;
     hydrateAgentRoomTasks(data.tasks || []);
+    resetHandoffTimeline();
+    clearAllTypingIndicators();
 
     showAgentSidebar(true);
     renderRoomMessages(data.messages || [], 'agent');
@@ -941,8 +1013,23 @@ export async function openAgentRoomChat(projectRoomId) {
     renderAgentLogs();
     renderAgentFiles();
     renderAgentRoomTasks();
+    renderOrchestrationConfig();
+    renderHandoffTimeline();
+
+    // Extract handoffs from existing messages for the timeline
+    for (const msg of (data.messages || [])) {
+      if (msg.event_type === 'handoff' && msg.sender_type === 'agent') {
+        extractHandoffsFromMessage(msg);
+      }
+    }
 
     await refreshAgentFiles();
+
+    // Load async data in parallel
+    Promise.all([
+      loadAgentMemories(),
+      loadTokenUsage(),
+    ]).catch(() => {});
 
     connectAgentRoomSocket();
   } catch (err) {
@@ -961,6 +1048,7 @@ export function renderAgentMembers(agents) {
     roomBots.hidden = true;
     roomBots.innerHTML = '';
     renderAgentRoomTasks();
+    renderAgentMemories();
     return;
   }
 

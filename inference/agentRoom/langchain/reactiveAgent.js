@@ -445,6 +445,7 @@ export async function runReactiveAgentTurn({
   // Run the agent with tool execution loop
   const toolResults = [];
   const handoffs = [];
+  const usageAccumulator = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, model: '', provider: '' };
   let finalMessage = '';
   let executedToolCount = 0;
   const seenResponseSignatures = new Set();
@@ -464,6 +465,20 @@ export async function runReactiveAgentTurn({
         nativeToolCallingEnabled = false;
         messages.push(new HumanMessage('[system] Native tool calling is unavailable for this provider. Use the documented JSON tool blocks for the rest of this turn.'));
         result = await baseModel.invoke(messages);
+      }
+
+      // Accumulate token usage from this LLM call
+      const iterUsage = result.additional_kwargs?.usage;
+      if (iterUsage) {
+        usageAccumulator.prompt_tokens += Number(iterUsage.prompt_tokens) || 0;
+        usageAccumulator.completion_tokens += Number(iterUsage.completion_tokens) || 0;
+        usageAccumulator.total_tokens += Number(iterUsage.total_tokens) || 0;
+      }
+      if (!usageAccumulator.model && result.additional_kwargs?.model) {
+        usageAccumulator.model = result.additional_kwargs.model;
+      }
+      if (!usageAccumulator.provider && result.additional_kwargs?.provider) {
+        usageAccumulator.provider = result.additional_kwargs.provider;
       }
 
       const content = normalizeResponseContent(result.content);
@@ -608,6 +623,7 @@ export async function runReactiveAgentTurn({
     toolResults,
     handoffs,
     privateMemory: buildPrivateMemoryFromTurn(input, finalMessage, toolResults),
+    usage: usageAccumulator,
   };
 }
 

@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url';
 
 import {
   canAccessAgentRoom,
+  clearAgentRoomMemory,
   createAgentRoomAgent,
   createAgentRoomTask,
   createAgentRoomWithDefaults,
@@ -13,13 +14,18 @@ import {
   getAgentRoom,
   getAgentRoomAgent,
   getAgentRoomFileReview,
+  getAgentRoomMemory,
   getAgentRoomTask,
+  getAgentRoomTokenHistory,
+  getAgentRoomTokenSummary,
   listAgentRoomAgents,
   listAgentRoomLogs,
+  listAgentRoomMemories,
   listAgentRoomMessages,
   listAgentRoomTasks,
   listAgentRoomsByOwner,
   saveAgentRoomLog,
+  saveAgentRoomMemory,
   upsertAgentRoomFileReview,
   updateAgentRoomConfig,
   updateAgentRoomAgent,
@@ -747,6 +753,68 @@ export async function handleAgentRoomRoute(path, url, req, res) {
     } catch (error) {
       sendJson(res, 400, { error: 'Failed to read file' });
     }
+    return true;
+  }
+
+  // ── Agent Memories ──────────────────────────────────────────────
+  const memoriesMatch = path.match(/^\/api\/agent-rooms\/([^/]+)\/memories$/);
+  if (memoriesMatch && req.method === 'GET') {
+    const room = getAccessibleRoomOrReject(memoriesMatch[1], userId, res);
+    if (!room) return true;
+
+    sendJson(res, 200, { memories: listAgentRoomMemories(room.id) });
+    return true;
+  }
+
+  const singleMemoryMatch = path.match(/^\/api\/agent-rooms\/([^/]+)\/memories\/([^/]+)$/);
+  if (singleMemoryMatch && req.method === 'GET') {
+    const room = getAccessibleRoomOrReject(singleMemoryMatch[1], userId, res);
+    if (!room) return true;
+
+    const agentName = singleMemoryMatch[2].toLowerCase();
+    const memory = getAgentRoomMemory(room.id, agentName);
+    sendJson(res, 200, { memory: memory || { agent_name: agentName, memory_text: '', updated_at: null } });
+    return true;
+  }
+
+  if (singleMemoryMatch && req.method === 'PUT') {
+    const room = getAccessibleRoomOrReject(singleMemoryMatch[1], userId, res);
+    if (!room) return true;
+    if (!requireRoomOwner(room, userId, res)) return true;
+
+    try {
+      const body = await readBody(req);
+      const agentName = singleMemoryMatch[2].toLowerCase();
+      const memoryText = String(body.memory_text || '').trim();
+      saveAgentRoomMemory(room.id, agentName, memoryText);
+      sendJson(res, 200, { memory: getAgentRoomMemory(room.id, agentName) });
+    } catch (error) {
+      sendJson(res, 400, { error: error.message || 'Failed to update memory' });
+    }
+    return true;
+  }
+
+  if (singleMemoryMatch && req.method === 'DELETE') {
+    const room = getAccessibleRoomOrReject(singleMemoryMatch[1], userId, res);
+    if (!room) return true;
+    if (!requireRoomOwner(room, userId, res)) return true;
+
+    const agentName = singleMemoryMatch[2].toLowerCase();
+    clearAgentRoomMemory(room.id, agentName);
+    sendJson(res, 200, { ok: true });
+    return true;
+  }
+
+  // ── Token Usage ───────────────────────────────────────────────
+  const tokenUsageMatch = path.match(/^\/api\/agent-rooms\/([^/]+)\/token-usage$/);
+  if (tokenUsageMatch && req.method === 'GET') {
+    const room = getAccessibleRoomOrReject(tokenUsageMatch[1], userId, res);
+    if (!room) return true;
+
+    const summary = getAgentRoomTokenSummary(room.id);
+    const limit = Math.min(Number(url.searchParams.get('limit')) || 50, 200);
+    const history = getAgentRoomTokenHistory(room.id, limit);
+    sendJson(res, 200, { summary, history });
     return true;
   }
 

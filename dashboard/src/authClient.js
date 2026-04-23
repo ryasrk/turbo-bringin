@@ -129,6 +129,24 @@ async function apiPatch(path, body) {
   return data;
 }
 
+async function apiPut(path, body) {
+  const tokens = getStoredTokens();
+  const headers = { 'Content-Type': 'application/json' };
+  if (tokens?.access_token) {
+    headers['Authorization'] = `Bearer ${tokens.access_token}`;
+  }
+
+  const res = await fetch(path, {
+    method: 'PUT',
+    headers,
+    body: JSON.stringify(body),
+  });
+
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+  return data;
+}
+
 // ── Token Refresh ──────────────────────────────────────────────
 
 function scheduleRefresh(expiresInSeconds) {
@@ -379,6 +397,33 @@ export async function getAgentRoomFileReview(roomId, path) {
 
 export async function updateAgentRoomFileReview(roomId, path, status, summary = '') {
   return apiPost(`/api/agent-rooms/${roomId}/file-review`, { path, status, summary }, true);
+}
+
+// ── Agent Memories ──────────────────────────────────────────────
+export async function getAgentRoomMemories(roomId) {
+  return apiGet(`/api/agent-rooms/${roomId}/memories`);
+}
+
+export async function getAgentRoomMemory(roomId, agentName) {
+  return apiGet(`/api/agent-rooms/${roomId}/memories/${encodeURIComponent(agentName)}`);
+}
+
+export async function updateAgentRoomMemory(roomId, agentName, memoryText) {
+  return apiPut(`/api/agent-rooms/${roomId}/memories/${encodeURIComponent(agentName)}`, { memory_text: memoryText });
+}
+
+export async function clearAgentRoomMemory(roomId, agentName) {
+  return apiDelete(`/api/agent-rooms/${roomId}/memories/${encodeURIComponent(agentName)}`);
+}
+
+// ── Token Usage ─────────────────────────────────────────────────
+export async function getAgentRoomTokenUsage(roomId, limit = 50) {
+  return apiGet(`/api/agent-rooms/${roomId}/token-usage?limit=${encodeURIComponent(String(limit))}`);
+}
+
+// ── Orchestration Config ────────────────────────────────────────
+export async function updateAgentRoomConfig(roomId, config) {
+  return apiPatch(`/api/agent-rooms/${roomId}/config`, config);
 }
 
 export async function writeAgentRoomFile(roomId, path, content) {

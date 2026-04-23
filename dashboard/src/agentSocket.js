@@ -7,6 +7,9 @@ import {
   refreshAgentFiles, openAgentFile, renderConnectionState, renderAgentProgress, renderAgentLogs,
    
 } from './agentWorkspace.js';
+import { setAgentTypingStatus, clearAllTypingIndicators } from './agentTypingIndicator.js';
+import { extractHandoffsFromMessage } from './agentHandoffViz.js';
+import { addRealtimeTokenUsage } from './agentTokenUsage.js';
 
 export function closeAgentSocket() {
   if (rs.agentRoomReconnectTimer) {
@@ -55,6 +58,7 @@ export function connectAgentRoomSocket() {
     if (payload.type === 'agent_room:message') {
       if (rs.currentRoomMode === 'agent' && payload.message) {
         appendAgentRoomMessage(payload.message);
+        extractHandoffsFromMessage(payload.message);
       }
       return;
     }
@@ -70,6 +74,7 @@ export function connectAgentRoomSocket() {
         rs.currentAgentMembers = rs.currentAgentMembers.map((a) =>
           a.name === payload.agent_name ? { ...a, status: payload.status } : a
         );
+        setAgentTypingStatus(payload.agent_name, payload.status);
         const pill = rs.panel?.querySelector(`[data-agent-edit="${CSS.escape(payload.agent_name)}"]`);
         if (pill) {
           pill.className = pill.className.replace(/\bstatus-\S+/g, '');
@@ -112,6 +117,13 @@ export function connectAgentRoomSocket() {
       return;
     }
 
+    if (payload.type === 'agent_room:token_usage') {
+      if (payload.agent_name && payload.usage) {
+        addRealtimeTokenUsage(payload.agent_name, payload.usage);
+      }
+      return;
+    }
+
     if (payload.type === 'agent_room:error') {
       showToast(payload.message || 'Agent room error', 'error');
     }
@@ -121,6 +133,7 @@ export function connectAgentRoomSocket() {
     if (rs.agentSocket === socket) {
       rs.agentSocket = null;
       rs.agentRoomConnectionState = 'offline';
+      clearAllTypingIndicators();
       renderConnectionState();
       scheduleAgentReconnect();
     }
