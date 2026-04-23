@@ -160,6 +160,7 @@ export function createMessageEl(role, content, stats = null, images = [], msgDat
         <span class="message-role">${roleName}</span>
         <span class="message-time">${time}</span>
         <button class="pin-msg-btn" title="Pin message">📌</button>
+        <button class="copy-msg-btn" title="Copy message">Copy</button>
         ${role === 'user' ? '<button class="edit-msg-btn" title="Edit">Edit</button>' : '<button class="regen-btn" title="Regenerate">Redo</button>'}
         ${role === 'assistant' ? '<button class="reaction-btn" data-reaction="up" title="Good response">👍</button><button class="reaction-btn" data-reaction="down" title="Poor response">👎</button>' : ''}
       </div>
@@ -193,6 +194,23 @@ export function createMessageEl(role, content, stats = null, images = [], msgDat
   const regenBtn = div.querySelector('.regen-btn');
   if (regenBtn) {
     regenBtn.addEventListener('click', () => regenerateLastResponse());
+  }
+
+  // Copy message button
+  const copyMsgBtn = div.querySelector('.copy-msg-btn');
+  if (copyMsgBtn) {
+    copyMsgBtn.addEventListener('click', async () => {
+      const contentEl = div.querySelector('.message-content');
+      const text = contentEl?.innerText || contentEl?.textContent || content;
+      try {
+        await navigator.clipboard.writeText(text);
+        copyMsgBtn.textContent = '✅';
+        setTimeout(() => { copyMsgBtn.textContent = 'Copy'; }, 2000);
+      } catch {
+        copyMsgBtn.textContent = '❌';
+        setTimeout(() => { copyMsgBtn.textContent = 'Copy'; }, 2000);
+      }
+    });
   }
 
   // Pin button

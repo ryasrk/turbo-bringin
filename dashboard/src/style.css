@@ -1722,9 +1722,10 @@ summary:focus-visible {
 /* Legacy #stop-btn override kept for specificity */
 #stop-btn { /* inherits .send-btn.stop-btn styles */ }
 
-/* ── Edit & Regen Buttons ───────────────────────── */
+/* ── Edit, Regen & Copy Message Buttons ─────────── */
 .edit-msg-btn,
-.regen-btn {
+.regen-btn,
+.copy-msg-btn {
   background: none;
   border: none;
   cursor: pointer;
@@ -1736,18 +1737,21 @@ summary:focus-visible {
 }
 
 .message:hover .edit-msg-btn,
-.message:hover .regen-btn {
+.message:hover .regen-btn,
+.message:hover .copy-msg-btn {
   opacity: 0.7;
 }
 
 .edit-msg-btn:hover,
-.regen-btn:hover {
+.regen-btn:hover,
+.copy-msg-btn:hover {
   opacity: 1 !important;
   background: var(--bg-tertiary);
 }
 
 .edit-msg-btn:focus-visible,
-.regen-btn:focus-visible {
+.regen-btn:focus-visible,
+.copy-msg-btn:focus-visible {
   opacity: 1 !important;
   background: var(--bg-tertiary);
 }
