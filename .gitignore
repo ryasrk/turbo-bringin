@@ -26,5 +26,11 @@ results/run_*/
 .env
 env_path.txt
 
+# Runtime data
+data/tenrary.db
+data/tenrary.db-shm
+data/tenrary.db-wal
+data/agent-workspaces/
+
 # OS
 .DS_Store
