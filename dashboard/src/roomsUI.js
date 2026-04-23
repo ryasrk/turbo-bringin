@@ -36,6 +36,7 @@ import { renderOrchestrationConfig, handleOrchestrationModeChange, handleAutonom
 import { loadTokenUsage } from './agentTokenUsage.js';
 import { resetHandoffTimeline, renderHandoffTimeline, extractHandoffsFromMessage } from './agentHandoffViz.js';
 import { clearAllTypingIndicators } from './agentTypingIndicator.js';
+import { loadSnapshots, clearSnapshots, renderSnapshotSection } from './agentSnapshots.js';
 
 // ── Rooms Panel (sidebar-like list) ────────────────────────────
 
@@ -271,6 +272,7 @@ export function createRoomsView() {
             </div>
             <div id="agent-room-progress-items" class="workspace-panel-body workspace-progress-list"></div>
           </div>
+          <div id="agent-room-snapshots" class="workspace-panel workspace-panel-snapshots"></div>
         </div>
         <div class="workspace-main">
           <div class="workspace-preview-header">
@@ -688,7 +690,11 @@ export function initRoomsUI() {
 
   const artifactsBtn = rs.panel.querySelector('#room-artifacts-btn');
   if (artifactsBtn) {
-    artifactsBtn.addEventListener('click', () => handleArtifactsClick());
+    artifactsBtn.addEventListener('click', () => {
+      handleArtifactsClick();
+      const snapshotContainer = rs.panel?.querySelector('#agent-room-snapshots');
+      if (snapshotContainer) loadSnapshots(snapshotContainer);
+    });
   }
 
   const codeViewBtn = rs.panel.querySelector('#agent-room-view-code-btn');
@@ -887,6 +893,7 @@ export async function openRoomChat(roomId) {
   rs.currentAgentRoomId = null;
   closeAgentSocket();
   resetAgentRoomSidebar();
+  clearSnapshots();
   const roomsPage = rs.panel.querySelector('.rooms-page');
   const roomChat = rs.panel.querySelector('#room-chat');
   const roomNote = rs.panel.querySelector('#room-chat-note');

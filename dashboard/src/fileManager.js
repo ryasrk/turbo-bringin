@@ -5,6 +5,7 @@
 
 import { state } from './appState.js';
 import { escapeHtml, showToast } from './utils.js';
+import { indexAttachment } from './observabilityPanel.js';
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 const ALLOWED_DOC_TYPES = new Set([
@@ -44,6 +45,11 @@ export function handleFileAttach(input) {
     }
     if (state.attachedFiles.some((f) => f.name === file.name)) return;
     state.attachedFiles.push(file);
+
+    // Index text-based files for citation grounding
+    if (!file.type.startsWith('image/') && file.size < 1_000_000) {
+      file.text().then(text => indexAttachment(file.name, text)).catch(() => {});
+    }
   });
 
   renderAttachedFiles();

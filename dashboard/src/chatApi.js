@@ -10,6 +10,7 @@ import {
   setActiveConversationId, getActiveConversationId,
 } from './chatStorage.js';
 import { categorizeError } from './connectionManager.js';
+import { createStreamStateMachine, StreamState } from './streamStateMachine.js';
 import { estimateTokens, updateSessionStats, recordUsage, getSessionStats, formatTokenCount } from './tokenCounter.js';
 import {
   generateTitle, generateTitleViaLLM, generateTitleFallback, getActiveConversation,
@@ -60,10 +61,40 @@ const CONTEXT_COMPACT_THRESHOLD = 0.8;
 const MIN_MESSAGES_FOR_COMPACTION = 8;
 const PRESERVE_RECENT_MESSAGES = 8;
 
+let _streamSM = null;
+
 export function initChatApi({ connMgr, renderAttachedFiles, refreshSidebar }) {
   _connMgr = connMgr;
   _renderAttachedFiles = renderAttachedFiles;
   _refreshSidebar = refreshSidebar;
+
+  _streamSM = createStreamStateMachine({
+    onStateChange({ prev, current, error }) {
+      const indicator = document.querySelector('.stream-state-indicator');
+      if (indicator) {
+        indicator.dataset.state = current;
+        indicator.textContent = current === StreamState.QUEUED ? `Queued${_streamSM?.queuePosition ? ` #${_streamSM.queuePosition}` : ''}` :
+          current === StreamState.STREAMING ? 'Streaming…' :
+          current === StreamState.FINALIZING ? 'Finalizing…' :
+          current === StreamState.ERROR ? 'Error' : '';
+        indicator.hidden = current === StreamState.IDLE || current === StreamState.DONE;
+      }
+    },
+    onWatchdogTimeout({ state: s, elapsed }) {
+      console.warn(`[Stream] Watchdog timeout in ${s} after ${elapsed}ms`);
+      showToast(`Stream stalled in ${s} state — retrying…`, 'error');
+    },
+    onDeadlock({ sinceLastActivity }) {
+      console.warn(`[Stream] Possible deadlock — no activity for ${sinceLastActivity}ms`);
+    },
+  });
+}
+
+/**
+ * Get the current stream state machine for external inspection.
+ */
+export function getStreamState() {
+  return _streamSM ? { state: _streamSM.state, tokenCount: _streamSM.tokenCount, isActive: _streamSM.isActive } : null;
 }
 
 function estimateContextUsage(messages) {
@@ -75,24 +106,51 @@ function estimateContextUsage(messages) {
   return systemPromptTokens + messageTokens;
 }
 
+/**
+ * Build a structured compact summary organized by category:
+ * facts, decisions, tasks, constraints, questions.
+ */
 function buildCompactSummary(messages) {
-  const lines = [];
+  const categories = { facts: [], decisions: [], tasks: [], constraints: [], questions: [], context: [] };
+
   for (const msg of messages) {
     const content = normalizeContent(msg.content).replace(/\s+/g, ' ').trim();
     if (!content) continue;
     const role = msg.role === 'user' ? 'User' : (msg.role === 'assistant' ? 'Assistant' : 'System');
-    lines.push(`- ${role}: ${content.slice(0, 220)}`);
-    if (lines.length >= 24) break;
+    const snippet = content.slice(0, 250);
+
+    // Simple heuristic categorization
+    const lower = content.toLowerCase();
+    if (lower.includes('must') || lower.includes('require') || lower.includes('constraint') || lower.includes('always') || lower.includes('never')) {
+      categories.constraints.push(`- ${role}: ${snippet}`);
+    } else if (lower.includes('decide') || lower.includes('chose') || lower.includes('agreed') || lower.includes('let\'s go with') || lower.includes('we\'ll use')) {
+      categories.decisions.push(`- ${role}: ${snippet}`);
+    } else if (lower.includes('todo') || lower.includes('task') || lower.includes('implement') || lower.includes('create') || lower.includes('build') || lower.includes('fix')) {
+      categories.tasks.push(`- ${role}: ${snippet}`);
+    } else if (content.includes('?') || lower.includes('how') || lower.includes('what') || lower.includes('why')) {
+      categories.questions.push(`- ${role}: ${snippet}`);
+    } else if (msg.role === 'assistant' && content.length > 100) {
+      categories.facts.push(`- ${snippet}`);
+    } else {
+      categories.context.push(`- ${role}: ${snippet}`);
+    }
   }
 
-  if (lines.length === 0) {
+  // Cap each category
+  const MAX_PER_CAT = 6;
+  const sections = [];
+  if (categories.constraints.length) sections.push(`**Constraints:**\n${categories.constraints.slice(0, MAX_PER_CAT).join('\n')}`);
+  if (categories.decisions.length) sections.push(`**Decisions:**\n${categories.decisions.slice(0, MAX_PER_CAT).join('\n')}`);
+  if (categories.tasks.length) sections.push(`**Tasks:**\n${categories.tasks.slice(0, MAX_PER_CAT).join('\n')}`);
+  if (categories.facts.length) sections.push(`**Key Facts:**\n${categories.facts.slice(0, MAX_PER_CAT).join('\n')}`);
+  if (categories.questions.length) sections.push(`**Open Questions:**\n${categories.questions.slice(0, MAX_PER_CAT).join('\n')}`);
+  if (categories.context.length && sections.length < 3) sections.push(`**Context:**\n${categories.context.slice(0, MAX_PER_CAT).join('\n')}`);
+
+  if (sections.length === 0) {
     return 'Previous conversation was compacted. No textual content was available in older turns.';
   }
 
-  return [
-    'Conversation memory summary from older turns:',
-    ...lines,
-  ].join('\n');
+  return `Structured conversation memory (${messages.length} messages compacted):\n\n${sections.join('\n\n')}`;
 }
 
 function renderMessagesFromState() {
@@ -115,18 +173,48 @@ function compactConversationIfNeeded() {
   const recentMessages = state.messages.slice(splitIndex);
   if (olderMessages.length === 0 || recentMessages.length === 0) return false;
 
+  // Pin protection — preserve pinned messages from compaction
+  const pinnedFromOlder = olderMessages.filter(m => m.pinned);
+  const compactableOlder = olderMessages.filter(m => !m.pinned);
+
   const summaryMessage = {
     role: 'system',
-    content: `[Compacted Memory]\n${buildCompactSummary(olderMessages)}\n[/Compacted Memory]`,
+    content: `[Compacted Memory]\n${buildCompactSummary(compactableOlder)}\n[/Compacted Memory]`,
     timestamp: Date.now(),
     compacted: true,
-    compactedCount: olderMessages.length,
+    compactedCount: compactableOlder.length,
   };
 
-  state.messages = [summaryMessage, ...recentMessages];
+  state.messages = [summaryMessage, ...pinnedFromOlder, ...recentMessages];
   renderMessagesFromState();
-  showToast(`Context compacted: ${olderMessages.length} older messages summarized.`);
+  const pinnedNote = pinnedFromOlder.length > 0 ? ` (${pinnedFromOlder.length} pinned preserved)` : '';
+  showToast(`Context compacted: ${compactableOlder.length} messages summarized${pinnedNote}.`);
   return true;
+}
+
+/**
+ * Get a preview of what compaction would produce (for UI display).
+ */
+export function getCompactionPreview() {
+  const maxContext = Number(state.settings.maxContext) || 65536;
+  const used = estimateContextUsage(state.messages);
+  const threshold = Math.floor(maxContext * CONTEXT_COMPACT_THRESHOLD);
+  const splitIndex = Math.max(2, state.messages.length - PRESERVE_RECENT_MESSAGES);
+  const olderMessages = state.messages.slice(0, splitIndex);
+  const pinnedCount = olderMessages.filter(m => m.pinned).length;
+  const compactableCount = olderMessages.length - pinnedCount;
+
+  return {
+    totalMessages: state.messages.length,
+    usedTokens: used,
+    maxTokens: maxContext,
+    percentage: maxContext > 0 ? Math.round((used / maxContext) * 100) : 0,
+    threshold: Math.round(CONTEXT_COMPACT_THRESHOLD * 100),
+    wouldCompact: used >= threshold && state.messages.length >= MIN_MESSAGES_FOR_COMPACTION,
+    compactableCount,
+    pinnedCount,
+    preserveCount: PRESERVE_RECENT_MESSAGES,
+  };
 }
 
 // ── Persistence ────────────────────────────────────────────────
@@ -302,6 +390,8 @@ export async function sendToAPI() {
   state.isStreaming = true;
   state.abortController = new AbortController();
   _connMgr?.setState('streaming');
+  _streamSM?.reset();
+  _streamSM?.transition(StreamState.QUEUED);
   sendBtn.disabled = true;
   stopBtn.hidden = false;
 
@@ -395,17 +485,22 @@ export async function sendToAPI() {
           try { msg = JSON.parse(event.data); } catch { return; }
           if (msg.type === 'queued') {
             const queuePos = getQueuePosition(msg.position);
+            _streamSM?.transition(StreamState.QUEUED, queuePos);
             contentEl.innerHTML = queuePos
               ? `<div class="queue-status"><span class="queue-icon">⏳</span><span class="queue-label">Queued</span><span class="queue-badge">#${queuePos}</span></div>`
               : `<div class="queue-status"><span class="queue-icon">⏳</span><span class="queue-label">Queued</span></div>`;
           } else if (msg.type === 'delta' && msg.delta) {
+            if (_streamSM?.state !== StreamState.STREAMING) _streamSM?.transition(StreamState.STREAMING);
             if (msg.channel === 'reasoning') reasoningContent += msg.delta;
             else fullContent += msg.delta;
             tokenCount++;
+            _streamSM?.recordToken();
             scheduleRender();
           } else if (msg.type === 'done') {
+            _streamSM?.transition(StreamState.FINALIZING);
             renderStream(false); resolveOnce(); ws.close(1000, 'complete');
           } else if (msg.type === 'error') {
+            _streamSM?.transition(StreamState.ERROR, new Error(msg.message || 'WebSocket stream failed.'));
             rejectOnce(new Error(msg.message || 'WebSocket stream failed.')); ws.close(1011, 'error');
           }
         };
@@ -561,6 +656,10 @@ export async function sendToAPI() {
   } finally {
     clearInterval(statsInterval);
     if (liveStatsEl) liveStatsEl.remove();
+    // Finalize stream state machine
+    if (_streamSM?.state === StreamState.FINALIZING) _streamSM.transition(StreamState.DONE);
+    else if (_streamSM?.isActive) _streamSM.transition(StreamState.DONE);
+    if (_streamSM?.state === StreamState.DONE || _streamSM?.state === StreamState.ERROR) _streamSM.transition(StreamState.IDLE);
     state.isStreaming = false;
     state.abortController = null;
     _connMgr?.setState('connected');

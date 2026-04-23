@@ -460,6 +460,24 @@ export async function downloadAgentRoomFile(roomId, path) {
   };
 }
 
+// ── Workspace Snapshots ────────────────────────────────────────
+
+export async function listAgentRoomSnapshots(roomId, limit = 50) {
+  return apiGet(`/api/agent-rooms/${roomId}/snapshots?limit=${limit}`, true);
+}
+
+export async function createAgentRoomSnapshot(roomId, label, description = '') {
+  return apiPost(`/api/agent-rooms/${roomId}/snapshots`, { label, description }, true);
+}
+
+export async function getAgentRoomSnapshot(roomId, snapshotId) {
+  return apiGet(`/api/agent-rooms/${roomId}/snapshots/${snapshotId}`, true);
+}
+
+export async function deleteAgentRoomSnapshot(roomId, snapshotId) {
+  return apiDelete(`/api/agent-rooms/${roomId}/snapshots/${snapshotId}`, true);
+}
+
 // ── Init ───────────────────────────────────────────────────────
 
 export function initAuth() {

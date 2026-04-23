@@ -39,6 +39,26 @@ export function addBranchNavToEl(msgEl, msg) {
   nextBtn.title = 'Next version';
   nextBtn.textContent = '→';
 
+  // Branch tree dots — visual indicator of all branches
+  const dots = document.createElement('span');
+  dots.className = 'branch-dots';
+  function renderDots() {
+    dots.innerHTML = msg.branches.map((_, i) =>
+      `<span class="branch-dot${i === msg.activeBranch ? ' active' : ''}" data-idx="${i}" title="Version ${i + 1}"></span>`
+    ).join('');
+  }
+  renderDots();
+
+  dots.addEventListener('click', (e) => {
+    const dot = e.target.closest('.branch-dot');
+    if (!dot) return;
+    const idx = parseInt(dot.dataset.idx, 10);
+    if (idx >= 0 && idx < msg.branches.length) {
+      msg.activeBranch = idx;
+      updateBranchView();
+    }
+  });
+
   function updateBranchView() {
     const branch = msg.branches[msg.activeBranch];
     const contentEl = msgEl.querySelector('.message-content');
@@ -56,6 +76,7 @@ export function addBranchNavToEl(msgEl, msg) {
     info.textContent = `${msg.activeBranch + 1}/${msg.branches.length}`;
     prevBtn.disabled = msg.activeBranch === 0;
     nextBtn.disabled = msg.activeBranch === msg.branches.length - 1;
+    renderDots();
 
     msg.content = branch.content;
     msg.stats = branch.stats;
@@ -72,9 +93,34 @@ export function addBranchNavToEl(msgEl, msg) {
   nextBtn.disabled = (msg.activeBranch ?? 0) === msg.branches.length - 1;
 
   nav.appendChild(prevBtn);
+  nav.appendChild(dots);
   nav.appendChild(info);
   nav.appendChild(nextBtn);
   msgEl.querySelector('.message-body').appendChild(nav);
+}
+
+/**
+ * Create a continuation card — shown when a conversation was interrupted.
+ */
+export function createContinuationCard(lastContent, onContinue) {
+  const card = document.createElement('div');
+  card.className = 'continuation-card';
+  const preview = (lastContent || '').slice(0, 120).replace(/\n/g, ' ');
+  card.innerHTML = `
+    <div class="continuation-card-body">
+      <span class="continuation-icon">↩️</span>
+      <div class="continuation-text">
+        <strong>Continue from where you left off?</strong>
+        <span class="continuation-preview">${escapeHtml(preview)}…</span>
+      </div>
+      <button type="button" class="continuation-btn">Continue</button>
+    </div>
+  `;
+  card.querySelector('.continuation-btn')?.addEventListener('click', () => {
+    card.remove();
+    onContinue?.();
+  });
+  return card;
 }
 
 // ── Message Element ────────────────────────────────────────────
@@ -216,6 +262,16 @@ export function editMessage(msgEl, originalContent) {
   if (state.isStreaming) return;
   const msgIndex = Array.from(messagesEl.children).indexOf(msgEl);
   if (msgIndex < 0) return;
+
+  // Track edit revision history on the message
+  const msg = state.messages[msgIndex];
+  if (msg) {
+    if (!msg.editHistory) msg.editHistory = [];
+    msg.editHistory.push({
+      content: originalContent,
+      timestamp: Date.now(),
+    });
+  }
 
   userInput.value = originalContent;
   autoResize(userInput);

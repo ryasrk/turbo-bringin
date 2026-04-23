@@ -345,6 +345,27 @@ const stmts = {
       updated_by = excluded.updated_by,
       updated_at = unixepoch()
   `),
+
+  // Workspace snapshots
+  createSnapshot: db.prepare(`
+    INSERT INTO agent_room_snapshots (id, room_id, label, description, file_count, total_size, snapshot_data, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `),
+  listSnapshots: db.prepare(`
+    SELECT id, room_id, label, description, file_count, total_size, created_by, created_at
+    FROM agent_room_snapshots
+    WHERE room_id = ?
+    ORDER BY created_at DESC
+    LIMIT ?
+  `),
+  getSnapshot: db.prepare(`
+    SELECT * FROM agent_room_snapshots
+    WHERE room_id = ? AND id = ?
+  `),
+  deleteSnapshot: db.prepare(`
+    DELETE FROM agent_room_snapshots
+    WHERE room_id = ? AND id = ?
+  `),
 };
 
 // ── Transactions ───────────────────────────────────────────────
@@ -764,6 +785,34 @@ export function upsertAgentRoomFileReview(roomId, filePath, fields = {}) {
   );
   touchAgentRoom(roomId);
   return getAgentRoomFileReview(roomId, normalizedPath);
+}
+
+// ── Workspace Snapshots ────────────────────────────────────────
+
+export function createSnapshot(roomId, label, description = '', fileList = [], createdBy = '') {
+  const id = uuid();
+  const fileCount = fileList.length;
+  const totalSize = fileList.reduce((sum, f) => sum + (f.size || 0), 0);
+  const snapshotData = JSON.stringify({ files: fileList });
+  stmts.createSnapshot.run(id, roomId, String(label).trim(), String(description).trim(), fileCount, totalSize, snapshotData, String(createdBy).trim());
+  touchAgentRoom(roomId);
+  return stmts.getSnapshot.get(roomId, id) || null;
+}
+
+export function listSnapshots(roomId, limit = 50) {
+  return stmts.listSnapshots.all(roomId, limit);
+}
+
+export function getSnapshot(roomId, snapshotId) {
+  const row = stmts.getSnapshot.get(roomId, snapshotId);
+  if (!row) return null;
+  try { row.snapshot_data = JSON.parse(row.snapshot_data); } catch { row.snapshot_data = { files: [] }; }
+  return row;
+}
+
+export function deleteSnapshot(roomId, snapshotId) {
+  const info = stmts.deleteSnapshot.run(roomId, snapshotId);
+  return info.changes > 0;
 }
 
 // Periodic cleanup

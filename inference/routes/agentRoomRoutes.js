@@ -10,7 +10,9 @@ import {
   createAgentRoomAgent,
   createAgentRoomTask,
   createAgentRoomWithDefaults,
+  createSnapshot,
   deleteAgentRoomAgent,
+  deleteSnapshot,
   getAgentRoom,
   getAgentRoomAgent,
   getAgentRoomFileReview,
@@ -18,12 +20,14 @@ import {
   getAgentRoomTask,
   getAgentRoomTokenHistory,
   getAgentRoomTokenSummary,
+  getSnapshot,
   listAgentRoomAgents,
   listAgentRoomLogs,
   listAgentRoomMemories,
   listAgentRoomMessages,
   listAgentRoomTasks,
   listAgentRoomsByOwner,
+  listSnapshots,
   saveAgentRoomLog,
   saveAgentRoomMemory,
   upsertAgentRoomFileReview,
@@ -995,6 +999,59 @@ export async function handleAgentRoomRoute(path, url, req, res) {
     if (!room) return true;
 
     streamWorkspaceZip(room.workspace_path, room.name, res);
+    return true;
+  }
+
+  // ── Workspace Snapshots ────────────────────────────────────────
+
+  const snapshotsMatch = path.match(/^\/api\/agent-rooms\/([^/]+)\/snapshots$/);
+  if (snapshotsMatch && req.method === 'GET') {
+    const room = getAccessibleRoomOrReject(snapshotsMatch[1], userId, res);
+    if (!room) return true;
+    const limit = Math.min(Number(url.searchParams.get('limit')) || 50, 200);
+    sendJson(res, 200, { snapshots: listSnapshots(room.id, limit) });
+    return true;
+  }
+
+  if (snapshotsMatch && req.method === 'POST') {
+    const room = getAccessibleRoomOrReject(snapshotsMatch[1], userId, res);
+    if (!room) return true;
+    try {
+      const body = await readBody(req);
+      const label = String(body.label || '').trim();
+      if (!label || label.length > 120) {
+        sendJson(res, 400, { error: 'Label is required (max 120 chars)' });
+        return true;
+      }
+      const description = String(body.description || '').trim().slice(0, 500);
+      // Collect current workspace file manifest
+      const files = await listFiles(room.workspace_path, '.');
+      const fileList = (files || []).map(f => ({ path: f.name || f.path, size: f.size || 0 }));
+      const snapshot = createSnapshot(room.id, label, description, fileList, req.user.username || userId);
+      saveAgentRoomLog(room.id, 'system', 'info', `Snapshot created: ${label}`, { snapshot_id: snapshot?.id });
+      sendJson(res, 201, { snapshot });
+    } catch (error) {
+      sendJson(res, 400, { error: error.message || 'Failed to create snapshot' });
+    }
+    return true;
+  }
+
+  const snapshotDetailMatch = path.match(/^\/api\/agent-rooms\/([^/]+)\/snapshots\/([^/]+)$/);
+  if (snapshotDetailMatch && req.method === 'GET') {
+    const room = getAccessibleRoomOrReject(snapshotDetailMatch[1], userId, res);
+    if (!room) return true;
+    const snapshot = getSnapshot(room.id, snapshotDetailMatch[2]);
+    if (!snapshot) { sendJson(res, 404, { error: 'Snapshot not found' }); return true; }
+    sendJson(res, 200, { snapshot });
+    return true;
+  }
+
+  if (snapshotDetailMatch && req.method === 'DELETE') {
+    const room = getAccessibleRoomOrReject(snapshotDetailMatch[1], userId, res);
+    if (!room) return true;
+    const deleted = deleteSnapshot(room.id, snapshotDetailMatch[2]);
+    if (!deleted) { sendJson(res, 404, { error: 'Snapshot not found' }); return true; }
+    sendJson(res, 200, { ok: true });
     return true;
   }
 

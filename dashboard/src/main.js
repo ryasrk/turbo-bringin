@@ -32,6 +32,8 @@ import { formatTokenCount, getAnalyticsSummary } from './tokenCounter.js';
 import { resolveModeModel } from './providerConfig.js';
 import { fetchEnowxProviderModels, pickPreferredProviderModel } from './providerModels.js';
 import { showToast } from './utils.js';
+import { persistDraft, loadDraft, clearDraft, persistSessionState, loadSessionState, showRecoveryBanner, clearSessionState } from './sessionRecovery.js';
+import { renderObservabilityCards, recordLatency, recordError } from './observabilityPanel.js';
 
 // Side-effect imports — register their own DOM event listeners on load
 import './playgroundManager.js';
@@ -259,6 +261,14 @@ analyticsBtn.addEventListener('click', () => {
     <div class="analytics-card"><div class="label">All Time</div><div class="value">${formatTokenCount(summary.allTime.total)}</div><div class="sub">${summary.allTime.count} requests</div></div>
     <div class="analytics-card"><div class="label">By Mode</div><div class="value">&nbsp;</div><div class="sub">TurboQuant: ${formatTokenCount(summary.byMode.turboquant)}<br>Standard: ${formatTokenCount(summary.byMode.standard)}<br>EnowxAI: ${formatTokenCount(summary.byMode.enowxai)}</div></div>
   `;
+  // Render observability health cards below analytics
+  let obsContainer = analyticsContent.querySelector('.obs-section');
+  if (!obsContainer) {
+    obsContainer = document.createElement('div');
+    obsContainer.className = 'obs-section';
+    analyticsContent.appendChild(obsContainer);
+  }
+  renderObservabilityCards(obsContainer);
   openModal(analyticsModal, analyticsBtn);
 });
 analyticsClose.addEventListener('click', () => closeModal(analyticsModal));
@@ -331,7 +341,7 @@ document.querySelectorAll('.plus-menu-item').forEach((item) => {
 
 // ── Send / Stop ────────────────────────────────────────────────
 sendBtn.addEventListener('click', () => {
-  if (!state.isStreaming && userInput.value.trim()) sendMessage(userInput.value);
+  if (!state.isStreaming && userInput.value.trim()) { clearDraft(); sendMessage(userInput.value); }
 });
 stopBtn.addEventListener('click', () => state.abortController?.abort());
 
@@ -339,6 +349,7 @@ stopBtn.addEventListener('click', () => state.abortController?.abort());
 userInput.addEventListener('input', () => {
   autoResize(userInput);
   updateSendButton();
+  persistDraft(userInput.value);
   const val = userInput.value;
   if (val.startsWith('/') && !val.includes('\n')) showCommandAutocomplete(val);
   else hideCommandAutocomplete();
@@ -459,6 +470,26 @@ window.addEventListener('resize', syncSidebarBackdrop);
 const lastConvId = getActiveConversationId();
 if (lastConvId) loadConversationById(lastConvId);
 else refreshSidebar();
+
+// Session recovery — restore draft and show recovery banner if needed
+const savedDraft = loadDraft();
+if (savedDraft?.text && userInput) {
+  userInput.value = savedDraft.text;
+  autoResize(userInput);
+  updateSendButton();
+}
+
+const savedSession = loadSessionState();
+if (savedSession?.conversationId && savedSession.wasStreaming) {
+  showRecoveryBanner(savedSession, (session) => {
+    if (session.conversationId) loadConversationById(session.conversationId);
+    clearSessionState();
+  }, () => clearSessionState());
+}
+
+// Persist session state periodically and on unload
+setInterval(persistSessionState, 15_000);
+window.addEventListener('beforeunload', () => { persistSessionState(); persistDraft(userInput?.value || ''); });
 
 updateContextBar();
 updateTokenInfo();
