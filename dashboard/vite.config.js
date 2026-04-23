@@ -1,6 +1,37 @@
 import { defineConfig, loadEnv } from 'vite'
 import { compression } from 'vite-plugin-compression2'
 
+/** Inject CSP meta tag only in production builds (dev needs inline scripts for HMR). */
+function cspPlugin() {
+  const csp = [
+    "default-src 'self'",
+    "script-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net",
+    "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net",
+    "font-src 'self' https://cdn.jsdelivr.net",
+    "img-src 'self' data: blob:",
+    "connect-src 'self' ws: wss:",
+    "worker-src 'self'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+  ].join('; ');
+
+  return {
+    name: 'inject-csp',
+    transformIndexHtml: {
+      order: 'post',
+      handler(html, ctx) {
+        // Only inject in production build
+        if (ctx.server) return html;
+        return html.replace(
+          '<!-- CSP injected at build time by Vite (see vite.config.js cspPlugin) -->',
+          `<meta http-equiv="Content-Security-Policy" content="${csp}" />`
+        );
+      },
+    },
+  };
+}
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const dashboardPort = env.DASHBOARD_PORT || process.env.DASHBOARD_PORT || '3000'
@@ -37,6 +68,8 @@ export default defineConfig(({ mode }) => {
       },
     },
     plugins: [
+      // Inject CSP only in production (dev needs inline scripts for Vite HMR)
+      cspPlugin(),
       // Pre-compress static assets at build time (Brotli level 11 — max compression)
       compression({ algorithm: 'brotliCompress', exclude: [/\.(png|jpg|jpeg|gif|webp|avif)$/i] }),
       // Also generate gzip for clients that don't support Brotli

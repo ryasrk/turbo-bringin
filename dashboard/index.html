@@ -3,18 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="
-    default-src 'self';
-    script-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net;
-    style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net;
-    font-src 'self' https://cdn.jsdelivr.net;
-    img-src 'self' data: blob:;
-    connect-src 'self' ws: wss:;
-    worker-src 'self';
-    object-src 'none';
-    base-uri 'self';
-    form-action 'self';
-  " />
+  <!-- CSP injected at build time by Vite (see vite.config.js cspPlugin) -->
   <title>Tenrary-X Chat</title>
   <!-- Preconnect to CDN domains — speeds up resource loading by ~100-200ms -->
   <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin />
