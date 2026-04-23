@@ -396,7 +396,7 @@ export function createRoomsView() {
               </div>
               <div class="form-group">
                 <label for="agent-prompt-input">System Prompt</label>
-                <textarea id="agent-prompt-input" rows="4" placeholder="Custom instructions for this bot's persona and behavior..." maxlength="4000"></textarea>
+                <textarea id="agent-prompt-input" rows="3" placeholder="Custom instructions for this bot's persona and behavior..." maxlength="4000"></textarea>
               </div>
               <div class="form-group">
                 <label>Tools</label>

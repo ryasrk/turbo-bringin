@@ -11,7 +11,7 @@ import { createRateLimiter } from '../rateLimit.js';
 
 // ── Rate Limiters ──────────────────────────────────────────────
 // Login: 5 attempts per 30 seconds per IP
-const loginLimiter = createRateLimiter({ windowMs: 30 * 1000, maxHits: 5, message: 'Too many login attempts. Try again in 30 seconds.' });
+const loginLimiter = createRateLimiter({ windowMs: 30 * 1000, maxHits: 10, message: 'Too many login attempts. Try again in 30 seconds.' });
 // Register: 3 accounts per hour per IP (spam protection)
 const registerLimiter = createRateLimiter({ windowMs: 60 * 60 * 1000, maxHits: 3, message: 'Too many registrations. Try again later.' });
 // Refresh: 20 per 15 minutes per IP

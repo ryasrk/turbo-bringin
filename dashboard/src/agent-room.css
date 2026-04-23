@@ -878,22 +878,22 @@
 .agent-tools-checkboxes {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px 16px;
+  gap: 6px 12px;
 }
 
 .checkbox-label {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 13px;
+  gap: 5px;
+  font-size: 12px;
   color: var(--text-primary);
   cursor: pointer;
 }
 
 .checkbox-label input[type="checkbox"] {
   accent-color: var(--accent);
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
 }
 
 .form-hint {
@@ -905,38 +905,72 @@
 
 /* ── Agent Config Modal: Two-Column Layout ── */
 .modal-md {
-  width: 680px;
+  width: 780px;
   max-width: 95vw;
+  max-height: min(85vh, calc(100vh - 24px));
+  padding: 18px 20px;
 }
 
 .agent-config-columns {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 24px;
+  gap: 18px;
 }
 
-@media (max-width: 700px) {
+@media (max-width: 800px) {
   .agent-config-columns {
     grid-template-columns: 1fr;
-    gap: 16px;
+    gap: 12px;
   }
 }
 
 .agent-config-col {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
+}
+
+/* Compact form fields inside agent config */
+.agent-config-col .form-group {
+  gap: 3px;
+}
+.agent-config-col .form-group label {
+  font-size: 11px;
+}
+.agent-config-col .form-group input,
+.agent-config-col .form-group select,
+.agent-config-col .form-group textarea {
+  font-size: 12.5px;
+  padding: 8px 10px;
+}
+.agent-config-col .form-hint {
+  margin-top: 2px;
+  font-size: 10px;
 }
 
 .agent-config-section-title {
-  margin: 0 0 4px 0;
-  font-size: 13px;
+  margin: 0 0 2px 0;
+  font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   color: var(--accent);
-  padding-bottom: 6px;
+  padding-bottom: 4px;
   border-bottom: 1px solid var(--border);
+}
+
+/* Compact modal title & actions for agent config */
+.modal-md h3 {
+  font-size: 15px;
+  margin: 0 0 12px 0;
+}
+.modal-md .modal-actions {
+  margin-top: 14px;
+  padding-top: 10px;
+}
+.modal-md .modal-actions button {
+  font-size: 12.5px;
+  padding: 7px 16px;
 }
 
 /* Provider config field transitions */
