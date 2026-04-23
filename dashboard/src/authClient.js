@@ -373,6 +373,14 @@ export async function getAgentRoomFile(roomId, path) {
   return apiGet(`/api/agent-rooms/${roomId}/file?path=${encodeURIComponent(path)}`);
 }
 
+export async function getAgentRoomFileReview(roomId, path) {
+  return apiGet(`/api/agent-rooms/${roomId}/file-review?path=${encodeURIComponent(path)}`);
+}
+
+export async function updateAgentRoomFileReview(roomId, path, status, summary = '') {
+  return apiPost(`/api/agent-rooms/${roomId}/file-review`, { path, status, summary }, true);
+}
+
 export async function writeAgentRoomFile(roomId, path, content) {
   return apiPost(`/api/agent-rooms/${roomId}/files/write`, { path, content }, true);
 }

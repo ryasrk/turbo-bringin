@@ -34,6 +34,7 @@ export const rs = {
   agentRoomFiles: [],
   agentRoomSelectedFile: null,
   agentRoomFileContent: '',
+  agentRoomFileReview: null,
   agentRoomPreviewMode: 'code',
   agentRoomExecutionResult: null,
   agentRoomProgressTimeline: [],

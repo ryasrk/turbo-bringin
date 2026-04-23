@@ -5247,6 +5247,50 @@ details[open] > .profile-password-toggle::before { content: '▾ '; }
   justify-content: flex-end;
 }
 
+.workspace-review-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.workspace-review-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.workspace-review-badge.status-draft {
+  color: #f59e0b;
+  background: color-mix(in srgb, #f59e0b 14%, transparent);
+}
+
+.workspace-review-badge.status-in_review {
+  color: #3b82f6;
+  background: color-mix(in srgb, #3b82f6 14%, transparent);
+}
+
+.workspace-review-badge.status-changes_requested {
+  color: #ef4444;
+  background: color-mix(in srgb, #ef4444 14%, transparent);
+}
+
+.workspace-review-badge.status-approved,
+.workspace-review-badge.status-promoted {
+  color: #10b981;
+  background: color-mix(in srgb, #10b981 14%, transparent);
+}
+
+.workspace-review-meta {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
 .workspace-preview-actions .btn-sm.is-active {
   border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
   background: color-mix(in srgb, var(--accent) 14%, var(--bg-secondary));

@@ -27,7 +27,7 @@ import {
   renderConnectionState, renderAgentProgress, renderAgentLogs, renderAgentFiles,
   refreshAgentFiles, openAgentFile, handleDownloadWorkspace, resetAgentRoomSidebar,
   downloadSelectedAgentFile,
-  runSelectedAgentPythonFile, setAgentWorkspacePreviewMode,
+  runSelectedAgentPythonFile, setAgentWorkspacePreviewMode, setSelectedAgentFileReviewStatus,
   showAgentSidebar, toggleAgentSidebar, handleArtifactsClick
 } from './agentWorkspace.js';
 import { connectAgentRoomSocket, closeAgentSocket } from './agentSocket.js';
@@ -235,11 +235,19 @@ export function createRoomsView() {
                 <button type="button" id="agent-room-download-file-btn" class="btn-sm btn-secondary" hidden>Download</button>
               </div>
               <p id="agent-room-file-meta">Choose an artifact or workspace file to preview it here.</p>
+              <div class="workspace-review-row">
+                <span id="agent-room-file-review-badge" class="workspace-review-badge" hidden></span>
+                <span id="agent-room-file-review-meta" class="workspace-review-meta" hidden></span>
+              </div>
             </div>
             <div class="workspace-preview-actions">
               <button type="button" id="agent-room-view-code-btn" class="btn-sm btn-secondary" hidden>Code</button>
               <button type="button" id="agent-room-view-live-btn" class="btn-sm btn-secondary" hidden>Live Preview</button>
               <button type="button" id="agent-room-run-python-btn" class="btn-sm btn-secondary" hidden>Run Python</button>
+              <button type="button" id="agent-room-request-review-btn" class="btn-sm btn-secondary" hidden>Request Review</button>
+              <button type="button" id="agent-room-request-changes-btn" class="btn-sm btn-secondary" hidden>Request Changes</button>
+              <button type="button" id="agent-room-approve-file-btn" class="btn-sm btn-secondary" hidden>Approve</button>
+              <button type="button" id="agent-room-promote-file-btn" class="btn-sm btn-secondary" hidden>Promote</button>
             </div>
           </div>
           <div id="agent-room-file-preview" class="workspace-preview-body"></div>
@@ -651,6 +659,26 @@ export function initRoomsUI() {
   const runPythonBtn = rs.panel.querySelector('#agent-room-run-python-btn');
   if (runPythonBtn) {
     runPythonBtn.addEventListener('click', () => runSelectedAgentPythonFile());
+  }
+
+  const requestReviewBtn = rs.panel.querySelector('#agent-room-request-review-btn');
+  if (requestReviewBtn) {
+    requestReviewBtn.addEventListener('click', () => setSelectedAgentFileReviewStatus('in_review'));
+  }
+
+  const requestChangesBtn = rs.panel.querySelector('#agent-room-request-changes-btn');
+  if (requestChangesBtn) {
+    requestChangesBtn.addEventListener('click', () => setSelectedAgentFileReviewStatus('changes_requested'));
+  }
+
+  const approveFileBtn = rs.panel.querySelector('#agent-room-approve-file-btn');
+  if (approveFileBtn) {
+    approveFileBtn.addEventListener('click', () => setSelectedAgentFileReviewStatus('approved'));
+  }
+
+  const promoteFileBtn = rs.panel.querySelector('#agent-room-promote-file-btn');
+  if (promoteFileBtn) {
+    promoteFileBtn.addEventListener('click', () => setSelectedAgentFileReviewStatus('promoted'));
   }
 
   const downloadFileBtn = rs.panel.querySelector('#agent-room-download-file-btn');

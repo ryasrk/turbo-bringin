@@ -3,7 +3,15 @@
  * Shared rendering and view helpers for the AI Agent room sidebar and workspace page.
  */
 
-import { getAgentRoomFiles, getAgentRoomFile, downloadAgentRoomFile, downloadAgentRoomWorkspace, runAgentRoomPython } from './authClient.js';
+import {
+  getAgentRoomFiles,
+  getAgentRoomFile,
+  getAgentRoomFileReview,
+  downloadAgentRoomFile,
+  downloadAgentRoomWorkspace,
+  runAgentRoomPython,
+  updateAgentRoomFileReview,
+} from './authClient.js';
 import { rs, escapeHtml, getFileLanguage, renderCodeWithLineNumbers, sanitizeClassToken } from './roomsUtils.js';
 import { normalizeWorkspaceEntriesResponse, normalizeWorkspaceFileContentResponse } from './agentWorkspaceData.js';
 import {
@@ -14,13 +22,21 @@ import {
   resolveWorkspaceAssetPath,
 } from './agentWorkspacePreview.js';
 import { showToast } from './utils.js';
-import { formatTimeAgo as formatDate } from './conversationManager.js';
+
+const REVIEW_STATUS_LABELS = {
+  draft: 'Draft',
+  in_review: 'In review',
+  changes_requested: 'Changes requested',
+  approved: 'Approved',
+  promoted: 'Promoted',
+};
 
 export function resetAgentRoomSidebar() {
   rs.agentRoomLogs = [];
   rs.agentRoomFileAuthors = new Map();
   rs.agentRoomSelectedFile = null;
   rs.agentRoomFileContent = '';
+  rs.agentRoomFileReview = null;
   rs.agentRoomPreviewMode = 'code';
   rs.agentRoomExecutionResult = null;
   rs.agentRoomSelectedTab = 'chat';
@@ -242,7 +258,9 @@ export async function openAgentFile(path) {
   rs.agentRoomSelectedFile = path;
   rs.agentRoomPreviewMode = isHtmlWorkspaceFile(path) ? 'live' : 'code';
   rs.agentRoomExecutionResult = null;
+  rs.agentRoomFileReview = null;
   renderAgentFiles();
+  renderSelectedFileReview();
 
   const title = rs.panel?.querySelector('#agent-room-file-title');
   const meta = rs.panel?.querySelector('#agent-room-file-meta');
@@ -263,6 +281,7 @@ export async function openAgentFile(path) {
   try {
     const data = await getAgentRoomFile(rs.currentAgentRoomId, path);
     rs.agentRoomFileContent = normalizeWorkspaceFileContentResponse(data);
+    await refreshSelectedAgentFileReview();
     await renderAgentFilePreview();
   } catch (err) {
     previews.forEach((preview) => {
@@ -315,6 +334,19 @@ export async function downloadSelectedAgentFile() {
     window.URL.revokeObjectURL(url);
   } catch (error) {
     showToast(error instanceof Error ? error.message : 'Failed to download file.', 'error');
+  }
+}
+
+export async function setSelectedAgentFileReviewStatus(status) {
+  if (!rs.currentAgentRoomId || !rs.agentRoomSelectedFile) return;
+
+  try {
+    const data = await updateAgentRoomFileReview(rs.currentAgentRoomId, rs.agentRoomSelectedFile, status, '');
+    rs.agentRoomFileReview = data.review || null;
+    renderSelectedFileReview();
+    showToast(`File marked as ${REVIEW_STATUS_LABELS[status] || status}.`, 'success');
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : 'Failed to update file review state.', 'error');
   }
 }
 
@@ -421,7 +453,12 @@ function syncWorkspacePreviewActions() {
   const downloadBtn = rs.panel?.querySelector('#agent-room-download-file-btn');
   const liveBtn = rs.panel?.querySelector('#agent-room-view-live-btn');
   const runBtn = rs.panel?.querySelector('#agent-room-run-python-btn');
+  const requestReviewBtn = rs.panel?.querySelector('#agent-room-request-review-btn');
+  const requestChangesBtn = rs.panel?.querySelector('#agent-room-request-changes-btn');
+  const approveBtn = rs.panel?.querySelector('#agent-room-approve-file-btn');
+  const promoteBtn = rs.panel?.querySelector('#agent-room-promote-file-btn');
   const path = rs.agentRoomSelectedFile;
+  const reviewStatus = rs.agentRoomFileReview?.status || 'draft';
 
   if (downloadBtn) {
     downloadBtn.hidden = !path;
@@ -441,6 +478,67 @@ function syncWorkspacePreviewActions() {
     runBtn.hidden = !isPythonWorkspaceFile(path);
     runBtn.classList.toggle('is-active', rs.agentRoomPreviewMode === 'output');
   }
+
+  if (requestReviewBtn) {
+    requestReviewBtn.hidden = !path || reviewStatus === 'in_review' || reviewStatus === 'promoted';
+  }
+
+  if (requestChangesBtn) {
+    requestChangesBtn.hidden = !path || reviewStatus === 'changes_requested' || reviewStatus === 'promoted';
+  }
+
+  if (approveBtn) {
+    approveBtn.hidden = !path || reviewStatus === 'approved' || reviewStatus === 'promoted';
+  }
+
+  if (promoteBtn) {
+    promoteBtn.hidden = !path || reviewStatus !== 'approved';
+  }
+
+  renderSelectedFileReview();
+}
+
+async function refreshSelectedAgentFileReview() {
+  if (!rs.currentAgentRoomId || !rs.agentRoomSelectedFile) {
+    rs.agentRoomFileReview = null;
+    renderSelectedFileReview();
+    return;
+  }
+
+  try {
+    const data = await getAgentRoomFileReview(rs.currentAgentRoomId, rs.agentRoomSelectedFile);
+    rs.agentRoomFileReview = data.review || null;
+  } catch {
+    rs.agentRoomFileReview = null;
+  }
+  renderSelectedFileReview();
+}
+
+function renderSelectedFileReview() {
+  const badge = rs.panel?.querySelector('#agent-room-file-review-badge');
+  const meta = rs.panel?.querySelector('#agent-room-file-review-meta');
+  const review = rs.agentRoomFileReview;
+  const path = rs.agentRoomSelectedFile;
+
+  if (!badge || !meta) return;
+
+  if (!path) {
+    badge.hidden = true;
+    meta.hidden = true;
+    badge.textContent = '';
+    meta.textContent = '';
+    return;
+  }
+
+  const status = review?.status || 'draft';
+  badge.hidden = false;
+  badge.className = `workspace-review-badge status-${sanitizeClassToken(status, 'draft')}`;
+  badge.textContent = REVIEW_STATUS_LABELS[status] || status;
+
+  const updatedBy = review?.updated_by ? ` by ${review.updated_by}` : '';
+  const updatedAt = review?.updated_at ? ` on ${new Date(Number(review.updated_at) * 1000).toLocaleString()}` : '';
+  meta.hidden = false;
+  meta.textContent = `Gate${updatedBy}${updatedAt}`;
 }
 
 export async function handleDownloadWorkspace() {
