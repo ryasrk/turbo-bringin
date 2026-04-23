@@ -394,17 +394,19 @@ function buildTextToolFollowUpMessage(toolResults) {
 import { getXbProgressSummary, getActiveXbTasks } from '../progressStore.js';
 
 /** JS heuristic for progress-check queries (0ms, 0 cost). */
-const PROGRESS_PATTERNS = /\b(progress|status|how.?s it|gimana|udah|sudah|done yet|finished|selesai|update|lagi ngapain)\b/i;
+const PROGRESS_PATTERNS = /\b(progress|status|how.?s it|gimana|udah|sudah|done yet|finished|selesai|update|lagi ngapain|mengerjakan apa|ngerjain apa|kerja apa|sedang apa|lagi apa|sampai mana|what.?s happening|what are you (doing|working)|are you done|still working|any update)\b/i;
 
 export function isProgressQuery(content) {
-  return PROGRESS_PATTERNS.test(content);
+  // Strip @mentions before checking — "@planner mengerjakan apa?" is a progress query
+  const stripped = content.replace(/@\w+/g, '').trim();
+  return PROGRESS_PATTERNS.test(stripped) || PROGRESS_PATTERNS.test(content);
 }
 
 const XA_CLASSIFY_PROMPT = `You are a message router for an AI agent team. Classify the user's message.
 
 Reply with EXACTLY one word:
 - CHAT — greetings, thanks, acknowledgments, casual conversation, simple questions about yourself
-- PROGRESS — asking about current work status, what you're doing, are you done yet
+- PROGRESS — asking about current work status, what agents are doing, are they done yet. Even if an @agent is mentioned, if the question is about their STATUS (not asking them to DO something), it's PROGRESS.
 - DELEGATE — requests that need tools, file operations, code generation, analysis, planning, or deep reasoning
 
 Examples:
@@ -414,8 +416,13 @@ Examples:
 "how's it going?" → PROGRESS
 "udah selesai?" → PROGRESS
 "what are you working on?" → PROGRESS
+"@planner mengerjakan apa?" → PROGRESS
+"@coder lagi ngapain?" → PROGRESS
+"@planner sampai mana?" → PROGRESS
+"any updates?" → PROGRESS
 "create a file" → DELEGATE
 "@coder fix the bug" → DELEGATE
+"@planner buat rencana" → DELEGATE
 
 Reply with one word only: CHAT, PROGRESS, or DELEGATE`;
 
@@ -458,7 +465,14 @@ export async function classifyWithRouter(agent, userContent, roomId = '') {
       if (roomId && getActiveXbTasks(roomId).length > 0) return 'progress';
       return 'chat'; // No active tasks, treat as chat
     }
-    if (raw.includes('DELEGATE')) return 'delegate';
+    if (raw.includes('DELEGATE')) {
+      // Safety check: if the JS heuristic says it's a progress query, override LLM
+      if (isProgressQuery(userContent) && roomId && getActiveXbTasks(roomId).length > 0) {
+        console.log(`[${agent.name}] xa classify override: LLM said DELEGATE but JS heuristic says PROGRESS`);
+        return 'progress';
+      }
+      return 'delegate';
+    }
     // Ambiguous response — default to delegate (safer)
     console.log(`[${agent.name}] xa classify ambiguous: "${raw}" → defaulting to delegate`);
     return 'delegate';

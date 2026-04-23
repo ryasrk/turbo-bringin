@@ -244,6 +244,17 @@ test('isProgressQuery detects Indonesian progress queries', () => {
   assert.equal(isProgressQuery('gimana progressnya?'), true);
   assert.equal(isProgressQuery('sudah belum?'), true);
   assert.equal(isProgressQuery('lagi ngapain?'), true);
+  assert.equal(isProgressQuery('mengerjakan apa?'), true);
+  assert.equal(isProgressQuery('sedang apa?'), true);
+  assert.equal(isProgressQuery('sampai mana?'), true);
+});
+
+test('isProgressQuery detects @mention + progress queries', () => {
+  assert.equal(isProgressQuery('@planner mengerjakan apa?'), true);
+  assert.equal(isProgressQuery('@coder lagi ngapain?'), true);
+  assert.equal(isProgressQuery('@planner sampai mana?'), true);
+  assert.equal(isProgressQuery('@reviewer udah selesai?'), true);
+  assert.equal(isProgressQuery('@coder what are you doing?'), true);
 });
 
 test('isProgressQuery rejects non-progress messages', () => {
